@@ -186,8 +186,16 @@ def read_squad_examples(input_file):
         for qa in item['qas']:
             qas_id = qa['id']
             question_text = qa['question']
+
+            answer_lst = []  # question 중복이 있는지 없는지 확인
             for answer in qa['detected_answers']:
                 orig_answer_text = answer['text']
+                # NOTE: Detected Answer를 보면 중복되는 것이 너무 많다. 해당 부분 전부 제거 필요
+                if orig_answer_text in answer_lst:
+                    continue
+                else:
+                    answer_lst.append(orig_answer_text)
+
                 # Only take the first span
                 start_position = answer['token_spans'][0][0]
                 end_position = answer['token_spans'][0][1]
@@ -417,11 +425,11 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained(param.bert_model, do_lower_case=param.do_lower_case)
     train_examples = read_squad_examples('SQuAD.jsonl.gz')
 
-    # import random
+    import random
 
-    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
-    #     for example in train_examples:
-    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
+    with open('squad_level.txt', 'w', encoding='utf-8') as f:
+        for example in train_examples:
+            f.write("{}\t{}\n".format(example.qas_id, random.random()))
 
     """
     ***** Running training *****
