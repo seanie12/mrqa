@@ -23,6 +23,80 @@ def get_logger(log_name):
 logger = get_logger('qa.log')
 
 
+def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
+                         orig_answer_text):
+    """Returns tokenized answer spans that better match the annotated answer."""
+
+    # The SQuAD annotations are character based. We first project them to
+    # whitespace-tokenized words. But then after WordPiece tokenization, we can
+    # often find a "better match". For example:
+    #
+    #   Question: What year was John Smith born?
+    #   Context: The leader was John Smith (1895-1943).
+    #   Answer: 1895
+    #
+    # The original whitespace-tokenized answer will be "(1895-1943).". However
+    # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
+    # the exact answer, 1895.
+    #
+    # However, this is not always possible. Consider the following:
+    #
+    #   Question: What country is the top exporter of electornics?
+    #   Context: The Japanese electronics industry is the lagest in the world.
+    #   Answer: Japan
+    #
+    # In this case, the annotator chose "Japan" as a character sub-span of
+    # the word "Japanese". Since our WordPiece tokenizer does not split
+    # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
+    # in SQuAD, but does happen.
+    tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
+
+    for new_start in range(input_start, input_end + 1):
+        for new_end in range(input_end, new_start - 1, -1):
+            text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
+            if text_span == tok_answer_text:
+                return (new_start, new_end)
+
+    return (input_start, input_end)
+
+
+def _check_is_max_context(doc_spans, cur_span_index, position):
+    """Check if this is the 'max context' doc span for the token."""
+
+    # Because of the sliding window approach taken to scoring documents, a single
+    # token can appear in multiple documents. E.g.
+    #  Doc: the man went to the store and bought a gallon of milk
+    #  Span A: the man went to the
+    #  Span B: to the store and bought
+    #  Span C: and bought a gallon of
+    #  ...
+    #
+    # Now the word 'bought' will have two scores from spans B and C. We only
+    # want to consider the score with "maximum context", which we define as
+    # the *minimum* of its left and right context (the *sum* of left and
+    # right context will always be the same, of course).
+    #
+    # In the example the maximum context for 'bought' would be span C since
+    # it has 1 left context and 3 right context, while span B has 4 left context
+    # and 0 right context.
+    best_score = None
+    best_span_index = None
+    for (span_index, doc_span) in enumerate(doc_spans):
+        end = doc_span.start + doc_span.length - 1
+        if position < doc_span.start:
+            continue
+        if position > end:
+            continue
+        num_left_context = position - doc_span.start
+        num_right_context = end - position
+        score = min(num_left_context, num_right_context) + 0.01 * doc_span.length
+        if best_score is None or score > best_score:
+            best_score = score
+            best_span_index = span_index
+
+    return cur_span_index == best_span_index
+
+
 class SquadExample(object):
     """
     A single training/test example for the Squad dataset.
@@ -42,6 +116,7 @@ class SquadExample(object):
         self.orig_answer_text = orig_answer_text
         self.start_position = start_position
         self.end_position = end_position
+        self.level = None
 
     def __str__(self):
         return self.__repr__()
@@ -73,7 +148,8 @@ class InputFeatures(object):
                  input_mask,
                  segment_ids,
                  start_position=None,
-                 end_position=None):
+                 end_position=None,
+                 level=None):
         self.unique_id = unique_id
         self.example_index = example_index
         self.doc_span_index = doc_span_index
@@ -85,6 +161,8 @@ class InputFeatures(object):
         self.segment_ids = segment_ids
         self.start_position = start_position
         self.end_position = end_position
+        # For level
+        self.level = level
 
 
 def read_squad_examples(input_file):
@@ -95,7 +173,6 @@ def read_squad_examples(input_file):
             # print(item) #or use print(item['X']) for printing specific data
             unproc_data.append(item)
     # Delete header
-    # header = unproc_data[0]['header']
     unproc_data = unproc_data[1:]
 
     examples = []
@@ -279,84 +356,46 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     input_mask=input_mask,
                     segment_ids=segment_ids,
                     start_position=start_position,
-                    end_position=end_position))
+                    end_position=end_position,
+                    level=example.level))
             unique_id += 1
 
     return features
 
 
-def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
-                         orig_answer_text):
-    """Returns tokenized answer spans that better match the annotated answer."""
+def read_level_file(input_file, sep='\t'):
+    '''
+    - id, level의 두개의 column으로 존재
+    - 딕셔너리 형태로 저장함
+    '''
+    levels = dict()
+    with open(input_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            item_lst = line.rstrip().split(sep)
+            levels[item_lst[0]] = float(item_lst[1])
 
-    # The SQuAD annotations are character based. We first project them to
-    # whitespace-tokenized words. But then after WordPiece tokenization, we can
-    # often find a "better match". For example:
-    #
-    #   Question: What year was John Smith born?
-    #   Context: The leader was John Smith (1895-1943).
-    #   Answer: 1895
-    #
-    # The original whitespace-tokenized answer will be "(1895-1943).". However
-    # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
-    # the exact answer, 1895.
-    #
-    # However, this is not always possible. Consider the following:
-    #
-    #   Question: What country is the top exporter of electornics?
-    #   Context: The Japanese electronics industry is the lagest in the world.
-    #   Answer: Japan
-    #
-    # In this case, the annotator chose "Japan" as a character sub-span of
-    # the word "Japanese". Since our WordPiece tokenizer does not split
-    # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
-    # in SQuAD, but does happen.
-    tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
-
-    for new_start in range(input_start, input_end + 1):
-        for new_end in range(input_end, new_start - 1, -1):
-            text_span = " ".join(doc_tokens[new_start:(new_end + 1)])
-            if text_span == tok_answer_text:
-                return (new_start, new_end)
-
-    return (input_start, input_end)
+    return levels
 
 
-def _check_is_max_context(doc_spans, cur_span_index, position):
-    """Check if this is the 'max context' doc span for the token."""
+def sort_features_by_level(features, desc=False):
+    """
+    features: feature 객체가 들어있는 list
+    desc: 난이도별로 내림차순으로 정렬할 것인가
+    """
+    # 난이도 별로 sort하기
+    features.sort(key=lambda x: x.level, reverse=desc)
+    return features
 
-    # Because of the sliding window approach taken to scoring documents, a single
-    # token can appear in multiple documents. E.g.
-    #  Doc: the man went to the store and bought a gallon of milk
-    #  Span A: the man went to the
-    #  Span B: to the store and bought
-    #  Span C: and bought a gallon of
-    #  ...
-    #
-    # Now the word 'bought' will have two scores from spans B and C. We only
-    # want to consider the score with "maximum context", which we define as
-    # the *minimum* of its left and right context (the *sum* of left and
-    # right context will always be the same, of course).
-    #
-    # In the example the maximum context for 'bought' would be span C since
-    # it has 1 left context and 3 right context, while span B has 4 left context
-    # and 0 right context.
-    best_score = None
-    best_span_index = None
-    for (span_index, doc_span) in enumerate(doc_spans):
-        end = doc_span.start + doc_span.length - 1
-        if position < doc_span.start:
-            continue
-        if position > end:
-            continue
-        num_left_context = position - doc_span.start
-        num_right_context = end - position
-        score = min(num_left_context, num_right_context) + 0.01 * doc_span.length
-        if best_score is None or score > best_score:
-            best_score = score
-            best_span_index = span_index
 
-    return cur_span_index == best_span_index
+def set_level_in_examples(examples, levels):
+    """
+    examples: example 객체가 들어있는 list
+    levels: {'id1': 0.48. 'id2': 0.12, ...}의 딕셔너리
+    """
+    for example in examples:
+        example.level = levels[example.qas_id]  # 해당 객체의 id를 levels의 딕셔너리에 넣으면 난이도가 나옴
+
+    return examples
 
 
 class Parameter(object):
@@ -377,6 +416,24 @@ if __name__ == "__main__":
     param = Parameter()
     tokenizer = BertTokenizer.from_pretrained(param.bert_model, do_lower_case=param.do_lower_case)
     train_examples = read_squad_examples('SQuAD.jsonl.gz')
+
+    # import random
+
+    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
+    #     for example in train_examples:
+    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
+
+    """
+    ***** Running training *****
+        Num orig examples = 34287
+        Num split examples = 35111 (train_features)
+    examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
+    """
+    # Read level
+    levels = read_level_file('squad_level.txt', sep='\t')
+    # Set level attribute in each example
+    train_examples = set_level_in_examples(train_examples, levels)
+
     train_features = convert_examples_to_features(
         examples=train_examples,
         tokenizer=tokenizer,
@@ -384,6 +441,14 @@ if __name__ == "__main__":
         max_query_length=param.max_query_length,
         doc_stride=param.doc_stride
     )
+
+    # Read Level and sort
+    train_features = sort_features_by_level(train_features, desc=False)
+
+    # Check
+    for i in range(10):
+        print(train_features[i].level)
+
     logger.info("***** Running training *****")
     logger.info("  Num orig examples = %d", len(train_examples))
     logger.info("  Num split examples = %d", len(train_features))
