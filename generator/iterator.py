@@ -425,11 +425,11 @@ if __name__ == "__main__":
     tokenizer = BertTokenizer.from_pretrained(param.bert_model, do_lower_case=param.do_lower_case)
     train_examples = read_squad_examples('SQuAD.jsonl.gz')
 
-    import random
+    # import random
 
-    with open('squad_level.txt', 'w', encoding='utf-8') as f:
-        for example in train_examples:
-            f.write("{}\t{}\n".format(example.qas_id, random.random()))
+    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
+    #     for example in train_examples:
+    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
 
     """
     ***** Running training *****
