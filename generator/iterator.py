@@ -184,7 +184,7 @@ def read_squad_examples(input_file):
 
         # 2. qas
         for qa in item['qas']:
-            qas_id = qa['id']
+            qas_id = qa['qid']  # NOTE: 모든 데이터셋에 qid는 존재하고, unique하다
             question_text = qa['question']
 
             answer_lst = []  # question 중복이 있는지 없는지 확인
