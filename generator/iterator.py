@@ -4,6 +4,7 @@ import copy
 import sys
 import logging
 import collections
+import codecs
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
@@ -168,13 +169,15 @@ class InputFeatures(object):
 def read_squad_examples(input_file):
     # Read data
     unproc_data = []
-    with gzip.open(input_file, 'rb') as f:  # opening file in binary(rb) mode
+    with gzip.open(input_file, 'rt', encoding='utf-8') as f:  # opening file in binary(rb) mode
         for item in json_lines.reader(f):
             # print(item) #or use print(item['X']) for printing specific data
             unproc_data.append(item)
+
     # Delete header
     unproc_data = unproc_data[1:]
 
+    ###################### Make Examples ######################
     examples = []
     for item in unproc_data:
         # 1. Get Context
