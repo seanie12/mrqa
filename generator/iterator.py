@@ -415,12 +415,22 @@ class Config(object):
                  do_lower_case=True,
                  max_seq_length=384,
                  max_query_length=64,
-                 doc_stride=128):
+                 doc_stride=128,
+                 batch_size=8,
+                 gradient_accumulation_steps=1,
+                 warmup_proportion=0.1,
+                 lr=5e-5,
+                 epochs=5):
         self.bert_model = bert_model
         self.do_lower_case = do_lower_case
         self.max_seq_length = max_seq_length
         self.max_query_length = max_query_length
         self.doc_stride = doc_stride
+        self.batch_size = batch_size
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.warmup_proportion = warmup_proportion
+        self.lr = lr
+        self.epochs = epochs
 
 
 if __name__ == "__main__":
@@ -441,7 +451,7 @@ if __name__ == "__main__":
     examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
     """
     # Read level
-    levels = read_level_file('squad_level.txt', sep='\t')
+    levels = read_level_file('SQuAD.tsv', sep='\t')
     # Set level attribute in each example
     train_examples = set_level_in_examples(train_examples, levels)
 

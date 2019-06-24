@@ -109,3 +109,4 @@ venv.bak/
 .idea/
 deprecated/
 sample.json
+./data
