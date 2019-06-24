@@ -409,7 +409,7 @@ def set_level_in_examples(examples, levels):
     return examples
 
 
-class Parameter(object):
+class Config(object):
     def __init__(self,
                  bert_model='bert-base-uncased',
                  do_lower_case=True,
@@ -424,8 +424,8 @@ class Parameter(object):
 
 
 if __name__ == "__main__":
-    param = Parameter()
-    tokenizer = BertTokenizer.from_pretrained(param.bert_model, do_lower_case=param.do_lower_case)
+    config = Config()
+    tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
     train_examples = read_squad_examples('SQuAD.jsonl.gz')
 
     # import random
@@ -448,9 +448,9 @@ if __name__ == "__main__":
     train_features = convert_examples_to_features(
         examples=train_examples,
         tokenizer=tokenizer,
-        max_seq_length=param.max_seq_length,
-        max_query_length=param.max_query_length,
-        doc_stride=param.doc_stride
+        max_seq_length=config.max_seq_length,
+        max_query_length=config.max_query_length,
+        doc_stride=config.doc_stride
     )
 
     # Read Level and sort
