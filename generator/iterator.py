@@ -404,7 +404,11 @@ def set_level_in_examples(examples, levels):
     levels: {'id1': 0.48. 'id2': 0.12, ...}의 딕셔너리
     """
     for example in examples:
-        example.level = levels[example.qas_id]  # 해당 객체의 id를 levels의 딕셔너리에 넣으면 난이도가 나옴
+        try:
+            example.level = levels[example.qas_id]  # 해당 객체의 id를 levels의 딕셔너리에 넣으면 난이도가 나옴
+        except:
+            print("Level doesn't exists...Setting the level 0.5 as default")
+            example.level = 0.5
 
     return examples
 

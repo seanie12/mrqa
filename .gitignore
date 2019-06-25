@@ -109,4 +109,5 @@ venv.bak/
 .idea/
 deprecated/
 sample.json
-./data
+data/
+pickled_data/

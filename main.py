@@ -10,6 +10,7 @@ from generator.iterator import Config, read_squad_examples, \
 from pytorch_pretrained_bert import BertForQuestionAnswering
 from pytorch_pretrained_bert.optimization import BertAdam
 import math
+import pickle
 
 
 def get_iter(features_lst, level, batch_size):
@@ -42,29 +43,46 @@ def main(args):
     tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
     train_folder = "./data/train"
     level_folder = "./generator/difficulty"
+    pickled_folder = './pickled_data'
+    if not os.path.exists(pickled_folder):
+        os.mkdir(pickled_folder)
+
     features_lst = []
     files = os.listdir(train_folder)
 
     for file in files:
         data_name = file.split(".")[0]
-        level_name = data_name + ".tsv"
-        level_path = os.path.join(level_folder, level_name)
-        file_path = os.path.join(train_folder, file)
+        # Check whether pkl file already exists
+        pickle_file_name = data_name + '.pkl'
+        pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
+        if os.path.exists(pickle_file_path):
+            with open(pickle_file_path, 'rb') as pkl_f:
+                print("Loading {} file as pkl...".format(pickle_file_name))
+                features_lst = pickle.load(pkl_f)
+        else:
+            level_name = data_name + ".tsv"
+            level_path = os.path.join(level_folder, level_name)
+            file_path = os.path.join(train_folder, file)
 
-        train_examples = read_squad_examples(file_path)
-        # read level file and set level
-        levels = read_level_file(level_path, sep='\t')
-        train_examples = set_level_in_examples(train_examples, levels)
+            train_examples = read_squad_examples(file_path)
+            # read level file and set level
+            levels = read_level_file(level_path, sep='\t')
+            train_examples = set_level_in_examples(train_examples, levels)
 
-        train_features = convert_examples_to_features(
-            examples=train_examples,
-            tokenizer=tokenizer,
-            max_seq_length=config.max_seq_length,
-            max_query_length=config.max_query_length,
-            doc_stride=config.doc_stride
-        )
-        train_features = sort_features_by_level(train_features, desc=False)
-        features_lst.append(train_features)
+            train_features = convert_examples_to_features(
+                examples=train_examples,
+                tokenizer=tokenizer,
+                max_seq_length=config.max_seq_length,
+                max_query_length=config.max_query_length,
+                doc_stride=config.doc_stride
+            )
+            train_features = sort_features_by_level(train_features, desc=False)
+            features_lst.append(train_features)
+
+            # Save feature lst as pickle (For reuse & fast loading)
+            with open(pickle_file_path, 'wb') as pkl_f:
+                print("Saving {} file as pkl...".format(pickle_file_name))
+                pickle.dump(features_lst, pkl_f)
 
     device = torch.device("cuda:0")
     model = BertForQuestionAnswering.from_pretrained(config.bert_model)
