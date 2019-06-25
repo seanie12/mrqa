@@ -57,7 +57,7 @@ def main(args):
         pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
         if os.path.exists(pickle_file_path):
             with open(pickle_file_path, 'rb') as pkl_f:
-                print("Loading {} file as pkl...".format(pickle_file_name))
+                print("Loading {} file as pkl...".format(data_name))
                 features_lst = pickle.load(pkl_f)
         else:
             level_name = data_name + ".tsv"
@@ -81,7 +81,7 @@ def main(args):
 
             # Save feature lst as pickle (For reuse & fast loading)
             with open(pickle_file_path, 'wb') as pkl_f:
-                print("Saving {} file as pkl...".format(pickle_file_name))
+                print("Saving {} file as pkl...".format(data_name))
                 pickle.dump(features_lst, pkl_f)
 
     device = torch.device("cuda:0")
