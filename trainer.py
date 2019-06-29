@@ -11,7 +11,7 @@ import pickle
 import os
 
 
-class MRQATrainer(object):
+class BaseTrainer(object):
     def __init__(self, config):
         self.config = config
         self.tokenizer = BertTokenizer.from_pretrained(config.bert_model,

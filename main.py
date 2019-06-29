@@ -1,7 +1,7 @@
 import argparse
 
 from generator.iterator import Config
-from trainer import MRQATrainer
+from trainer import BaseTrainer
 
 
 def main(args):
@@ -12,7 +12,7 @@ def main(args):
                     epochs=args.epochs,
                     debug=args.debug)
 
-    trainer = MRQATrainer(config)
+    trainer = BaseTrainer(config)
     trainer.train()
 
 
