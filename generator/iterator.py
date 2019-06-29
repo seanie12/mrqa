@@ -166,7 +166,7 @@ class InputFeatures(object):
         self.level = level
 
 
-def read_squad_examples(input_file):
+def read_squad_examples(input_file, debug=False):
     # Read data
     unproc_data = []
     with gzip.open(input_file, 'rt', encoding='utf-8') as f:  # opening file in binary(rb) mode
@@ -176,6 +176,8 @@ def read_squad_examples(input_file):
 
     # Delete header
     unproc_data = unproc_data[1:]
+    if debug:
+        unproc_data = unproc_data[:100]
 
     ###################### Make Examples ######################
     examples = []
@@ -428,7 +430,8 @@ class Config(object):
                  gradient_accumulation_steps=1,
                  warmup_proportion=0.1,
                  lr=5e-5,
-                 epochs=5):
+                 epochs=5,
+                 debug=False):
         self.bert_model = bert_model
         self.do_lower_case = do_lower_case
         self.max_seq_length = max_seq_length
@@ -439,6 +442,7 @@ class Config(object):
         self.warmup_proportion = warmup_proportion
         self.lr = lr
         self.epochs = epochs
+        self.debug= debug
 
 
 if __name__ == "__main__":
