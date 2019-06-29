@@ -298,10 +298,10 @@ class MetaTrainer(BaseTrainer):
                     end_positions = end_positions.to(self.device)
                     with torch.no_grad():
                         old_features = temp_old_feature_extractor_network(input_ids, seg_ids, input_mask)
-                    new_featuers = temp_new_feature_extractor_network(input_ids, seg_ids, input_mask)
+                    new_features = temp_new_feature_extractor_network(input_ids, seg_ids, input_mask)
 
                     loss_main_old = self.classifier(old_features, start_positions, end_positions)
-                    loss_main_new = self.classifier(new_featuers, start_positions, end_positions)
+                    loss_main_new = self.classifier(new_features, start_positions, end_positions)
 
                     reward = loss_main_old - loss_main_new
                     utility = torch.tanh(reward)
