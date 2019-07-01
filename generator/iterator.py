@@ -771,10 +771,14 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
     output_text = orig_text[orig_start_position:(orig_end_position + 1)]
     return output_text
 
-if __name__ == "__main__":
+
+def iter_test(file_name):
+    '''
+    This is just a test code!
+    '''
     config = Config()
     tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
-    train_examples = read_squad_examples('SQuAD.jsonl.gz')
+    train_examples = read_squad_examples('../data/train/{}.jsonl.gz'.format(file_name))
 
     # import random
 
@@ -789,7 +793,7 @@ if __name__ == "__main__":
     examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
     """
     # Read level
-    levels = read_level_file('difficulty/SQuAD.tsv', sep='\t')
+    levels = read_level_file('difficulty/{}.tsv'.format(file_name), sep='\t')
     # Set level attribute in each example
     train_examples = set_level_in_examples(train_examples, levels)
 
@@ -812,3 +816,8 @@ if __name__ == "__main__":
     logger.info("***** Running training *****")
     logger.info("  Num orig examples = %d", len(train_examples))
     logger.info("  Num split examples = %d", len(train_features))
+
+
+if __name__ == "__main__":
+    for file_name in ['HotpotQA', 'NaturalQuestions', 'NewsQA', 'SearchQA', 'SQuAD', 'TriviaQA']:
+        iter_test(file_name)
