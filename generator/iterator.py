@@ -456,48 +456,6 @@ class Config(object):
         self.model_path = model_path
 
 
-if __name__ == "__main__":
-    config = Config()
-    tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
-    train_examples = read_squad_examples('SQuAD.jsonl.gz')
-
-    # import random
-
-    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
-    #     for example in train_examples:
-    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
-
-    """
-    ***** Running training *****
-        Num orig examples = 34287
-        Num split examples = 35111 (train_features)
-    examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
-    """
-    # Read level
-    levels = read_level_file('SQuAD.tsv', sep='\t')
-    # Set level attribute in each example
-    train_examples = set_level_in_examples(train_examples, levels)
-
-    train_features = convert_examples_to_features(
-        examples=train_examples,
-        tokenizer=tokenizer,
-        max_seq_length=config.max_seq_length,
-        max_query_length=config.max_query_length,
-        doc_stride=config.doc_stride
-    )
-
-    # Read Level and sort
-    train_features = sort_features_by_level(train_features, desc=False)
-
-    # Check
-    for i in range(10):
-        print(train_features[i].level)
-
-    logger.info("***** Running training *****")
-    logger.info("  Num orig examples = %d", len(train_examples))
-    logger.info("  Num split examples = %d", len(train_features))
-
-
 def write_predictions(all_examples, all_features, all_results, n_best_size,
                       max_answer_length, do_lower_case, output_prediction_file,
                       verbose_logging=False, version_2_with_negative=False, null_score_diff_threshold=0):
@@ -812,3 +770,45 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
 
     output_text = orig_text[orig_start_position:(orig_end_position + 1)]
     return output_text
+
+if __name__ == "__main__":
+    config = Config()
+    tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
+    train_examples = read_squad_examples('SQuAD.jsonl.gz')
+
+    # import random
+
+    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
+    #     for example in train_examples:
+    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
+
+    """
+    ***** Running training *****
+        Num orig examples = 34287
+        Num split examples = 35111 (train_features)
+    examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
+    """
+    # Read level
+    levels = read_level_file('difficulty/SQuAD.tsv', sep='\t')
+    # Set level attribute in each example
+    train_examples = set_level_in_examples(train_examples, levels)
+
+    train_features = convert_examples_to_features(
+        examples=train_examples,
+        tokenizer=tokenizer,
+        max_seq_length=config.max_seq_length,
+        max_query_length=config.max_query_length,
+        doc_stride=config.doc_stride,
+        is_training=True
+    )
+
+    # Read Level and sort
+    train_features = sort_features_by_level(train_features, desc=False)
+
+    # Check
+    for i in range(10):
+        print(train_features[i].level)
+
+    logger.info("***** Running training *****")
+    logger.info("  Num orig examples = %d", len(train_examples))
+    logger.info("  Num split examples = %d", len(train_features))
