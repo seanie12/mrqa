@@ -1,16 +1,19 @@
+import math
+import os
+import pickle
+import random
+import time
+
+import numpy as np
 import torch
+from pytorch_pretrained_bert import BertForQuestionAnswering
 from pytorch_pretrained_bert import BertTokenizer
+from pytorch_pretrained_bert.optimization import BertAdam
 from torch.utils.data import DataLoader, TensorDataset, RandomSampler
-from model import FeatureExtractor, Classifier, Critic
+
 from generator.iterator import read_squad_examples, \
     read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
-from pytorch_pretrained_bert import BertForQuestionAnswering
-from pytorch_pretrained_bert.optimization import BertAdam
-import math
-import pickle
-import os
-import time
-import random
+from model import FeatureExtractor, Classifier, Critic
 from utils import eta, progress_bar
 
 
@@ -170,6 +173,15 @@ class BaseTrainer(object):
         else:
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
+
+    @staticmethod
+    def set_random_seed(random_seed=2019):
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed(random_seed)
+        np.random.seed(random_seed)
+
+    random_seed = 2019
+    set_random_seed(random_seed=random_seed)
 
 
 class MetaTrainer(BaseTrainer):
