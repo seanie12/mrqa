@@ -176,14 +176,10 @@ class BaseTrainer(object):
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
 
-    @staticmethod
-    def set_random_seed(random_seed=2019):
+    def set_random_seed(self, random_seed=2019):
         torch.manual_seed(random_seed)
         torch.cuda.manual_seed(random_seed)
         np.random.seed(random_seed)
-
-    random_seed = 2019
-    set_random_seed(random_seed=random_seed)
 
 
 class MetaTrainer(BaseTrainer):
