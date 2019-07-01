@@ -19,6 +19,7 @@ from utils import eta, progress_bar
 
 class BaseTrainer(object):
     def __init__(self, config):
+        self.set_random_seed()
         self.config = config
         self.save_dir = os.path.join("./save", "base_{}".format(time.strftime("%m%d%H%M%S")))
         if not os.path.exists(self.save_dir):
@@ -126,6 +127,7 @@ class BaseTrainer(object):
     def train(self):
         step = 1
         avg_loss = 0
+
         for epoch in range(self.config.epochs):
             levels = [0.3, 0.5, 0.7, 0.9, 1.0]
             idx = min(epoch, len(levels) - 1)
