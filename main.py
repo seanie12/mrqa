@@ -26,5 +26,6 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=8, type=int, help="batch size")
     parser.add_argument("--epochs", default=5, type=int, help="number of epochs")
     parser.add_argument("--grad_accum", default=1, type=int, help="gradient_accumulation_steps")
+    parser.add_argument("--model_path", default="", type=str, help="saved model path")
     args = parser.parse_args()
     main(args)
