@@ -1,24 +1,21 @@
-import collections
-import math
-import os
-import pickle
-import random
-import time
-
 import torch
-from pytorch_pretrained_bert import BertForQuestionAnswering
 from pytorch_pretrained_bert import BertTokenizer
-from pytorch_pretrained_bert.optimization import BertAdam
-from torch.utils.data import DataLoader, TensorDataset, RandomSampler, SequentialSampler
-
-from generator.iterator import read_squad_examples, \
-    read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features, write_predictions
+from torch.utils.data import DataLoader, TensorDataset, RandomSampler
 from model import FeatureExtractor, Classifier, Critic
+from generator.iterator import read_squad_examples, \
+    read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
+from pytorch_pretrained_bert import BertForQuestionAnswering
+from pytorch_pretrained_bert.optimization import BertAdam
+import math
+import pickle
+import os
+import time
+import random
 from utils import eta, progress_bar
 
 
 class BaseTrainer(object):
-    def __init__(self, config, is_training=True):
+    def __init__(self, config):
         self.config = config
         self.save_dir = os.path.join("./save", "base_{}".format(time.strftime("%m%d%H%M%S")))
         if not os.path.exists(self.save_dir):
@@ -26,14 +23,9 @@ class BaseTrainer(object):
         self.tokenizer = BertTokenizer.from_pretrained(config.bert_model,
                                                        do_lower_case=config.do_lower_case)
         print("debugging mode:", config.debug)
-        if is_training:
-            self.features_lst = self.get_features(config.debug)
+        self.features_lst = self.get_features(config.debug)
         self.device = torch.device("cuda:0")
         model = BertForQuestionAnswering.from_pretrained(config.bert_model)
-        # if model path is given load save model
-        if len(config.model_path) != 0:
-            state_dict = torch.load(model)
-            model.load_state_dict(state_dict)
         self.model = model.to(self.device)
         param_optimizer = list(model.named_parameters())
 
@@ -89,7 +81,8 @@ class BaseTrainer(object):
                     tokenizer=self.tokenizer,
                     max_seq_length=self.config.max_seq_length,
                     max_query_length=self.config.max_query_length,
-                    doc_stride=self.config.doc_stride
+                    doc_stride=self.config.doc_stride,
+                    is_training=True
                 )
                 train_features = sort_features_by_level(train_features, desc=False)
                 features_lst.append(train_features)
@@ -131,14 +124,13 @@ class BaseTrainer(object):
         step = 1
         avg_loss = 0
         for epoch in range(self.config.epochs):
-            levels = [0.2, 0.4, 0.6, 0.8, 1.0]
+            levels = [0.3, 0.5, 0.7, 0.9, 1.0]
             idx = min(epoch, len(levels) - 1)
             level = levels[idx]
-            print("level : {}".format(level))
             iter_lst = self.get_iter(self.features_lst, level, self.config.batch_size)
             num_batches = sum([len(iterator) for iterator in iter_lst])
-            start = time.time()
             batch_step = 1
+            start = time.time()
             for data_loader in iter_lst:
                 for i, batch in enumerate(data_loader, start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions = batch
@@ -155,70 +147,21 @@ class BaseTrainer(object):
                     loss = loss / self.config.gradient_accumulation_steps
                     loss.backward()
                     avg_loss = self.cal_running_avg_loss(loss.item(), avg_loss)
-
                     if step % self.config.gradient_accumulation_steps == 0:
                         self.optimizer.step()
                         self.optimizer.zero_grad()
-
                     step += 1
                     batch_step += 1
-
                     msg = "{}/{} {} - ETA : {} - loss: {:.4f}" \
                         .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
-                                eta(start, batch_step, num_batches), avg_loss)
+                                eta(start, batch_step, num_batches),
+                                avg_loss)
                     print(msg, end="\r")
+            print("epoch: {}, final loss: {:.4f}".format(epoch, avg_loss))
+
             del iter_lst
         # save model
         self.save_model(self.config.epochs, avg_loss)
-
-    def predict(self, test_file):
-        assert len(self.config.model_path) != 0, "model path should be given"
-        eval_examples = read_squad_examples(test_file, debug=False)
-        eval_features = convert_examples_to_features(eval_examples,
-                                                     tokenizer=self.tokenizer,
-                                                     max_seq_length=self.config.max_seq_length,
-                                                     max_query_length=self.config.max_query_length,
-                                                     doc_stride=self.config.doc_stride)
-
-        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-        eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids)
-        eval_sampler = SequentialSampler(eval_data)
-        eval_loader = DataLoader(eval_data, sampler=eval_sampler, batch_size=16)
-
-        RawResult = collections.namedtuple("RawResult",
-                                           ["unique_id", "start_logits", "end_logits"])
-        example_index = -1
-        all_results = []
-        for batch in eval_loader:
-            input_ids, input_mask, seg_ids = batch
-            seq_len = torch.sum(torch.sign(input_ids), 1)
-            max_len = torch.max(seq_len)
-            input_ids = input_ids[:, :max_len].to(self.device)
-            input_mask = input_mask[:, :max_len].to(self.device)
-            seg_ids = seg_ids[:, :max_len].to(self.device)
-            with torch.no_grad():
-                batch_start_logits, batch_end_logits = self.model(input_ids, seg_ids, input_mask)
-                batch_size = batch_start_logits.size(0)
-
-            for i in range(batch_size):
-                example_index += 1
-                start_logits = batch_start_logits[i].detach().cpu().tolist()
-                end_logits = batch_end_logits[i].detach().cpu().tolist()
-                eval_feature = eval_features[i]
-                unique_id = int(eval_feature.unique_id)
-                all_results.append(RawResult(unique_id=unique_id,
-                                             start_logits=start_logits,
-                                             end_logits=end_logits))
-
-        output_prediction_file = "./predictions.json"
-
-        preds = write_predictions(eval_examples, eval_features, all_results,
-                                  n_best_size=20, max_answer_length=30,
-                                  do_lower_case=self.config.do_lower_case,
-                                  output_prediction_file=output_prediction_file)
-        return preds
 
     @staticmethod
     def cal_running_avg_loss(loss, running_avg_loss, decay=0.99):
