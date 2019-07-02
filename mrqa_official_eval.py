@@ -8,16 +8,16 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import string
-import re
-import json
 import gzip
-import sys
+import json
+import re
+import string
 from collections import Counter
 
 
 def normalize_answer(s):
     """Lower text and remove punctuation, articles and extra whitespace."""
+
     def remove_articles(text):
         return re.sub(r'\b(a|an|the)\b', ' ', text)
 
@@ -102,8 +102,8 @@ def evaluate(answers, predictions, skip_no_answer=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Evaluation for MRQA Workshop Shared Task')
-    parser.add_argument('dataset_file', type=str, help='Dataset File')
-    parser.add_argument('prediction_file', type=str, help='Prediction File')
+    parser.add_argument('--dataset_file', type=str, help='Dataset File')
+    parser.add_argument('--prediction_file', type=str, help='Prediction File')
     parser.add_argument('--skip-no-answer', action='store_true')
     args = parser.parse_args()
 

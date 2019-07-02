@@ -2,14 +2,19 @@ import math
 
 import torch
 import torch.nn as nn
-from pytorch_pretrained_bert import BertModel
+from pytorch_pretrained_bert import BertModel, BertConfig
 import torch.nn.functional as F
 
 
 class FeatureExtractor(nn.Module):
-    def __init__(self, bert_model="bert-base-uncased"):
+    def __init__(self, bert_model="bert-base-uncased", bert_config=None, pretrained=True):
         super(FeatureExtractor, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model)
+        if pretrained:
+            self.bert = BertModel.from_pretrained(bert_model)
+        else:
+            assert bert_config is not None, print("bert config file should be given")
+            config = BertConfig(bert_config)
+            self.bert = BertModel(config)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None):
         sequence_output, _ = self.bert(input_ids,
@@ -37,8 +42,10 @@ class Classifier(nn.Module):
             end_positions = end_positions.squeeze(-1)
         # sometimes the start/end positions are outside our model inputs, we ignore these terms
         ignored_index = start_logits.size(1)
-        start_positions.clamp_(0, ignored_index)
-        end_positions.clamp_(0, ignored_index)
+        start_positions = start_positions.clamp(0, ignored_index)
+        end_positions = end_positions.clamp(0, ignored_index)
+        # start_positions.clamp_(0, ignored_index)
+        # end_positions.clamp_(0, ignored_index)
 
         loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
         start_loss = loss_fct(start_logits, start_positions)

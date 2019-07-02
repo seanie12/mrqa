@@ -18,7 +18,7 @@ def get_logger(log_name):
     logger = logging.getLogger()
     logger.addHandler(logging.StreamHandler(sys.stdout))  # For print out the result on console
     logger.info('')
-    logger.info("#################################### New Start #####################################")
+    logger.info("#################################### New Start2 #####################################")
     return logger
 
 
@@ -441,7 +441,7 @@ class Config(object):
                  lr=5e-5,
                  epochs=5,
                  debug=False,
-                 model_path=""):
+                 config_file=None):
         self.bert_model = bert_model
         self.do_lower_case = do_lower_case
         self.max_seq_length = max_seq_length
@@ -453,7 +453,7 @@ class Config(object):
         self.lr = lr
         self.epochs = epochs
         self.debug = debug
-        self.model_path = model_path
+        self.config_file = config_file
 
 
 def write_predictions(all_examples, all_features, all_results, n_best_size,

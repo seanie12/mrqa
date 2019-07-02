@@ -19,6 +19,7 @@ from utils import eta, progress_bar
 
 class BaseTrainer(object):
     def __init__(self, config):
+        print("init base model")
         self.set_random_seed()
         self.config = config
         self.save_dir = os.path.join("./save", "base_{}".format(time.strftime("%m%d%H%M%S")))
@@ -28,7 +29,7 @@ class BaseTrainer(object):
                                                        do_lower_case=config.do_lower_case)
         print("debugging mode:", config.debug)
         self.features_lst = self.get_features(config.debug)
-        self.device = torch.device("cuda:0")
+        self.device = torch.device("cuda:3")
         model = BertForQuestionAnswering.from_pretrained(config.bert_model)
         self.model = model.to(self.device)
         param_optimizer = list(model.named_parameters())
@@ -120,7 +121,7 @@ class BaseTrainer(object):
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
 
-        save_file = os.path.join(self.save_dir, "class_{}_{}".format(epoch, loss))
+        save_file = os.path.join(self.save_dir, "base_{}_{}".format(epoch, loss))
         state_dict = self.model.state_dict()
         torch.save(state_dict, save_file)
 
@@ -151,7 +152,8 @@ class BaseTrainer(object):
                     loss = self.model(input_ids, seg_ids, input_mask, start_positions, end_positions)
                     loss = loss / self.config.gradient_accumulation_steps
                     loss.backward()
-                    avg_loss = self.cal_running_avg_loss(loss.item(), avg_loss)
+                    avg_loss = self.cal_running_avg_loss(loss.item() * self.config.gradient_accumulation_steps,
+                                                         avg_loss)
                     if step % self.config.gradient_accumulation_steps == 0:
                         self.optimizer.step()
                         self.optimizer.zero_grad()
@@ -184,6 +186,7 @@ class BaseTrainer(object):
 
 class MetaTrainer(BaseTrainer):
     def __init__(self, config):
+        self.set_random_seed()
         self.config = config
         self.save_dir = os.path.join("./save", "base_{}".format(time.strftime("%m%d%H%M%S")))
         if not os.path.exists(self.save_dir):
@@ -241,20 +244,35 @@ class MetaTrainer(BaseTrainer):
                                         t_total=num_train_optimization_steps)
 
     def train(self):
-        step = 1
+        global_step = 1
         avg_loss = 0
+        avg_dg_loss = 0
+        temp_old_feature_extractor_network = FeatureExtractor(self.config.bert_model,
+                                                              self.config.config_file,
+                                                              pretrained=False).to(self.device)
         for epoch in range(self.config.epochs):
+            # get data below certain level
             levels = [0.3, 0.5, 0.7, 0.9, 1.0]
             idx = min(epoch, len(levels) - 1)
             level = levels[idx]
+            # shuffle iterators
             iter_lst = self.get_iter(self.features_lst, level, self.config.batch_size)
             random.shuffle(iter_lst)
+            # half of iterators are for meta train and the others for meta test
             num_train = len(iter_lst) // 2
             meta_train_iters = iter_lst[:num_train]
             meta_test_iters = iter_lst[num_train:]
-            for i in range(len(meta_test_iters)):
-                meta_train_iter = meta_train_iters[i]
-                meta_test_iter = meta_test_iters[i]
+
+            assert len(meta_train_iters) == len(meta_test_iters)
+
+            num_batches = sum([min(len(train_iter), len(test_iter))
+                               for train_iter, test_iter in zip(meta_train_iters, meta_test_iters)])
+            batch_step = 1
+            start = time.time()
+            for idx in range(len(meta_test_iters)):
+                # select domain for meta train and meta test
+                meta_train_iter = meta_train_iters[idx]
+                meta_test_iter = meta_test_iters[idx]
                 for j, (train_batch, test_batch) in enumerate(zip(meta_train_iter, meta_test_iter), start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
                     # remove unnecessary pad token
@@ -265,7 +283,7 @@ class MetaTrainer(BaseTrainer):
                     seg_ids = seg_ids[:, :max_len].to(self.device)
                     start_positions = start_positions.to(self.device)
                     end_positions = end_positions.to(self.device)
-
+                    # get features
                     features = self.f_ext(input_ids, seg_ids, input_mask)
                     loss_main = self.classifier(features, start_positions, end_positions)
                     loss_main = loss_main / self.config.gradient_accumulation_steps
@@ -302,11 +320,12 @@ class MetaTrainer(BaseTrainer):
                             theta_updated_new[k] = v - self.config.lr * grad_theta[num_grad]
                             num_grad += 1
 
-                    temp_new_feature_extractor_network = FeatureExtractor(self.config.bert_model).to(self.device)
+                    temp_new_feature_extractor_network = FeatureExtractor(self.config.bert_model,
+                                                                          self.config.config_file,
+                                                                          pretrained=False).to(self.device)
                     self.fix_nn(temp_new_feature_extractor_network, theta_updated_new)
                     temp_new_feature_extractor_network.train()
 
-                    temp_old_feature_extractor_network = FeatureExtractor(self.config.bert_model).to(self.device)
                     temp_old_feature_extractor_network.load_state_dict(theta_updated_old)
                     temp_old_feature_extractor_network.train()
                     input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
@@ -318,8 +337,11 @@ class MetaTrainer(BaseTrainer):
                     seg_ids = seg_ids[:, :max_len].to(self.device)
                     start_positions = start_positions.to(self.device)
                     end_positions = end_positions.to(self.device)
+
                     with torch.no_grad():
                         old_features = temp_old_feature_extractor_network(input_ids, seg_ids, input_mask)
+                    old_features = old_features.detach().to(self.device)
+
                     new_features = temp_new_feature_extractor_network(input_ids, seg_ids, input_mask)
 
                     loss_main_old = self.classifier(old_features, start_positions, end_positions)
@@ -337,10 +359,16 @@ class MetaTrainer(BaseTrainer):
                     loss_held_out.backward()
                     self.omega_optimizer.step()
                     torch.cuda.empty_cache()
-                    step += 1
+
                     avg_loss = self.cal_running_avg_loss(loss_main.item(), avg_loss)
-                    if step % 100 == 0:
-                        print("Epoch: {}, step :{}, loss :{:.4f}".format(epoch + 1, step, avg_loss))
+                    avg_dg_loss = self.cal_running_avg_loss(loss_dg.item(), avg_dg_loss)
+                    msg = "{}/{} {} - ETA : {} - loss: {:.4f}, dg_loss: {:.4f}" \
+                        .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
+                                eta(start, batch_step, num_batches),
+                                avg_loss, avg_dg_loss)
+                    print(msg, end="\r")
+                    global_step += 1
+                    batch_step += 1
         # save model
         self.save_model(self.config.epochs, avg_loss)
 
