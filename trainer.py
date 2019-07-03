@@ -29,7 +29,7 @@ class BaseTrainer(object):
                                                        do_lower_case=config.do_lower_case)
         print("debugging mode:", config.debug)
         self.features_lst = self.get_features(config.debug)
-        self.device = torch.device("cuda:3")
+        self.device = torch.device("cuda")
         model = BertForQuestionAnswering.from_pretrained(config.bert_model)
         self.model = model.to(self.device)
         param_optimizer = list(model.named_parameters())
@@ -121,7 +121,7 @@ class BaseTrainer(object):
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
 
-        save_file = os.path.join(self.save_dir, "base_{}_{}".format(epoch, loss))
+        save_file = os.path.join(self.save_dir, "base_{}_{:.3f}".format(epoch, loss))
         state_dict = self.model.state_dict()
         torch.save(state_dict, save_file)
 
@@ -165,10 +165,9 @@ class BaseTrainer(object):
                                 avg_loss)
                     print(msg, end="\r")
             print("epoch: {}, final loss: {:.4f}".format(epoch, avg_loss))
-
-            del iter_lst
             # save model
             self.save_model(epoch, avg_loss)
+            del iter_lst
 
     @staticmethod
     def cal_running_avg_loss(loss, running_avg_loss, decay=0.99):
@@ -188,7 +187,7 @@ class MetaTrainer(BaseTrainer):
     def __init__(self, config):
         self.set_random_seed()
         self.config = config
-        self.save_dir = os.path.join("./save", "base_{}".format(time.strftime("%m%d%H%M%S")))
+        self.save_dir = os.path.join("./save", "meta_{}".format(time.strftime("%m%d%H%M%S")))
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
         self.tokenizer = BertTokenizer.from_pretrained(config.bert_model,
@@ -371,6 +370,7 @@ class MetaTrainer(BaseTrainer):
                     batch_step += 1
             # save model every epoch
             self.save_model(epoch, avg_loss)
+            del iter_lst
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
