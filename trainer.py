@@ -55,7 +55,7 @@ class BaseTrainer(object):
     def get_features(self, debug=False):
         train_folder = "./data/train"
         level_folder = "./generator/difficulty"
-        pickled_folder = './pickled_data'
+        pickled_folder = "./pickled_data"
         if not os.path.exists(pickled_folder):
             os.mkdir(pickled_folder)
 
@@ -167,8 +167,8 @@ class BaseTrainer(object):
             print("epoch: {}, final loss: {:.4f}".format(epoch, avg_loss))
 
             del iter_lst
-        # save model
-        self.save_model(self.config.epochs, avg_loss)
+            # save model
+            self.save_model(epoch, avg_loss)
 
     @staticmethod
     def cal_running_avg_loss(loss, running_avg_loss, decay=0.99):
@@ -369,8 +369,8 @@ class MetaTrainer(BaseTrainer):
                     print(msg, end="\r")
                     global_step += 1
                     batch_step += 1
-        # save model
-        self.save_model(self.config.epochs, avg_loss)
+            # save model every epoch
+            self.save_model(epoch, avg_loss)
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
