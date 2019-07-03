@@ -250,6 +250,9 @@ class MetaTrainer(BaseTrainer):
         temp_old_feature_extractor_network = FeatureExtractor(self.config.bert_model,
                                                               self.config.config_file,
                                                               pretrained=False).to(self.device)
+        temp_new_feature_extractor_network = FeatureExtractor(self.config.bert_model,
+                                                              self.config.config_file,
+                                                              pretrained=False).to(self.device)
         for epoch in range(self.config.epochs):
             # get data below certain level
             levels = [0.3, 0.5, 0.7, 0.9, 1.0]
@@ -320,9 +323,6 @@ class MetaTrainer(BaseTrainer):
                             theta_updated_new[k] = v - self.config.lr * grad_theta[num_grad]
                             num_grad += 1
 
-                    temp_new_feature_extractor_network = FeatureExtractor(self.config.bert_model,
-                                                                          self.config.config_file,
-                                                                          pretrained=False).to(self.device)
                     self.fix_nn(temp_new_feature_extractor_network, theta_updated_new)
                     temp_new_feature_extractor_network.train()
 
