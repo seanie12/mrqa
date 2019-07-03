@@ -109,7 +109,7 @@ venv.bak/
 .idea/
 deprecated/
 sample.json
-data/
+data/train
 pickled_data/
 save/
 debug.py
