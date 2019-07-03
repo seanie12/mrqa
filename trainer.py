@@ -54,7 +54,7 @@ class BaseTrainer(object):
 
     def get_features(self, debug=False):
         train_folder = "./data/train"
-        level_folder = "./generator/difficulty/190703"
+        level_folder = "./generator/difficulty"
         pickled_folder = './pickled_data'
         if not os.path.exists(pickled_folder):
             os.mkdir(pickled_folder)

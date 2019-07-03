@@ -18,7 +18,7 @@ def get_logger(log_name):
     logger = logging.getLogger()
     logger.addHandler(logging.StreamHandler(sys.stdout))  # For print out the result on console
     logger.info('')
-    logger.info("#################################### New Start2 #####################################")
+    logger.info("#################################### New Start #####################################")
     return logger
 
 
