@@ -301,11 +301,15 @@ class MetaTrainer(BaseTrainer):
                     loss_main, loss_dg, loss_held_out = self.model(train_batch, test_batch, self.config.lr,
                                                                    self.theta_optimizer, self.phi_optimizer)
 
+                    loss_held_out = loss_held_out.mean()
+                    loss_dg = loss_dg.mean()
+                    loss_held_out = loss_held_out.mean()
                     # update feature extractor and classifier
                     self.theta_optimizer.step()
                     self.phi_optimizer.step()
                     # update critic
                     self.omega_optimizer.zero_grad()
+
                     loss_held_out.backward()
                     self.omega_optimizer.step()
                     torch.cuda.empty_cache()
@@ -360,7 +364,6 @@ class MetaTrainer(BaseTrainer):
 
         k_param_fn(model)
         return model
-
 
 
 class MetaTrainerOld(BaseTrainer):
