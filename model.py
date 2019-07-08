@@ -79,3 +79,88 @@ class Critic(nn.Module):
         score = torch.mean(hidden)
 
         return score
+
+
+class DGLearner(nn.Module):
+    def __init__(self, bert_config):
+        super(DGLearner, self).__init__()
+        self.feat_ext = FeatureExtractor()
+        self.classifier = Classifier(hidden_size=768)
+        self.temp_old_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
+                                                                   pretrained=False)
+        self.temp_new_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
+                                                                   pretrained=False)
+        self.critic = Critic(hidden_size=768)
+
+    def forward(self, train_batch, test_batch, lr, theta_opt, phi_opt):
+        input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
+        features = self.feat_ext(input_ids, seg_ids, input_mask)
+        loss_main = self.classifier(features, start_positions, end_positions)
+        theta_opt.zero_grad()
+        phi_opt.zero_grad()
+        loss_main.backward(retain_graph=True)
+
+        loss_dg = self.critic(features)
+        grad_theta = [theta_i.grad for theta_i in self.feat_ext.parameters()]
+        theta_updated_old = dict()
+
+        num_grad = 0
+        for i, (k, v) in enumerate(self.feat_ext.state_dict().items()):
+            if grad_theta[num_grad] is None:
+                num_grad += 1
+                theta_updated_old[k] = v
+            else:
+                theta_updated_old[k] = v - lr * grad_theta[num_grad]
+                num_grad += 1
+        loss_dg.backward(create_graph=True)
+
+        grad_theta = [theta_i.grad for theta_i in self.feat_ext.parameters()]
+        theta_updated_new = {}
+        num_grad = 0
+        for i, (k, v) in enumerate(self.feat_ext.state_dict().items()):
+
+            if grad_theta[num_grad] is None:
+                num_grad += 1
+                theta_updated_new[k] = v
+            else:
+                theta_updated_new[k] = v - lr * grad_theta[num_grad]
+                num_grad += 1
+
+        self.fix_nn(self.temp_new_feature_extractor_network, theta_updated_new)
+        self.temp_new_feature_extractor_network.train()
+
+        self.temp_old_feature_extractor_network.load_state_dict(theta_updated_old)
+        self.temp_old_feature_extractor_network.train()
+        input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
+        with torch.no_grad():
+            old_features = self.temp_old_feature_extractor_network(input_ids, seg_ids, input_mask)
+        old_features = old_features.detach()
+
+        new_features = self.temp_new_feature_extractor_network(input_ids, seg_ids, input_mask)
+
+        loss_main_old = self.classifier(old_features, start_positions, end_positions)
+        loss_main_new = self.classifier(new_features, start_positions, end_positions)
+
+        reward = loss_main_old - loss_main_new
+        utility = torch.tanh(reward)
+        loss_held_out = - utility.sum()
+
+        return loss_main, loss_dg, loss_held_out
+
+    @staticmethod
+    def fix_nn(model, theta):
+        def k_param_fn(tmp_model, name=None):
+            if len(tmp_model._modules) != 0:
+                for (k, v) in tmp_model._modules.items():
+                    if name is None:
+                        k_param_fn(v, name=str(k))
+                    else:
+                        k_param_fn(v, name=str(name + '.' + k))
+            else:
+                for (k, v) in tmp_model._parameters.items():
+                    if not isinstance(v, torch.Tensor):
+                        continue
+                    tmp_model._parameters[k] = theta[str(name + '.' + k)]
+
+        k_param_fn(model)
+        return model

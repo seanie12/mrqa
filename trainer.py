@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 import torch
+import torch.nn as nn
 from pytorch_pretrained_bert import BertForQuestionAnswering
 from pytorch_pretrained_bert import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
@@ -13,7 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset, RandomSampler
 
 from generator.iterator import read_squad_examples, \
     read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
-from model import FeatureExtractor, Classifier, Critic
+from model import FeatureExtractor, Classifier, Critic, DGLearner
 from utils import eta, progress_bar
 
 
@@ -73,6 +74,7 @@ class BaseTrainer(object):
                     features_lst.append(pickle.load(pkl_f))
             else:
                 level_name = data_name + ".tsv"
+                print("processing {} file".format(data_name))
                 level_path = os.path.join(level_folder, level_name)
                 file_path = os.path.join(train_folder, file)
 
@@ -194,6 +196,183 @@ class MetaTrainer(BaseTrainer):
                                                        do_lower_case=config.do_lower_case)
         print("debugging mode:", config.debug)
         self.features_lst = self.get_features(config.debug)
+        bert_config = config.config_file
+        self.device = torch.device("cuda")
+        ngpu = torch.cuda.device_count()
+        devices = [i for i in range(ngpu)]
+        self.model = DGLearner(bert_config).to(self.device)
+
+        param_optimizer = list(self.model.feat_ext.named_parameters())
+
+        # hack to remove pooler, which is not used
+        # thus it produce None grad that break apex
+        param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
+
+        no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        max_len = max([len(f) for f in self.features_lst])
+        num_train_optimization_steps = math.ceil(max_len / config.batch_size) \
+                                       * config.epochs * len(self.features_lst)
+
+        self.theta_optimizer = BertAdam(optimizer_grouped_parameters,
+                                        lr=config.lr,
+                                        warmup=config.warmup_proportion,
+                                        t_total=num_train_optimization_steps)
+
+        param_optimizer = list(self.model.classifier.named_parameters())
+
+        no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        self.phi_optimizer = BertAdam(optimizer_grouped_parameters,
+                                      lr=config.lr,
+                                      warmup=config.warmup_proportion,
+                                      t_total=num_train_optimization_steps)
+        param_optimizer = list(self.model.critic.named_parameters())
+
+        no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+        optimizer_grouped_parameters = [
+            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+        self.omega_optimizer = BertAdam(optimizer_grouped_parameters,
+                                        lr=config.lr,
+                                        warmup=config.warmup_proportion,
+                                        t_total=num_train_optimization_steps)
+        self.model = nn.DataParallel(self.model, device_ids=devices, output_device=1)
+
+    def train(self):
+        global_step = 1
+        avg_loss = 0
+        avg_dg_loss = 0
+        avg_meta_loss = 0
+        for epoch in range(self.config.epochs):
+            # get data below certain level
+            levels = [0.3, 0.5, 0.7, 0.9, 1.0]
+            idx = min(epoch, len(levels) - 1)
+            level = levels[idx]
+            # shuffle iterators
+            iter_lst = self.get_iter(self.features_lst, level, self.config.batch_size)
+            random.shuffle(iter_lst)
+            # half of iterators are for meta train and the others for meta test
+            num_train = len(iter_lst) // 2
+            meta_train_iters = iter_lst[:num_train]
+            meta_test_iters = iter_lst[num_train:]
+
+            assert len(meta_train_iters) == len(meta_test_iters)
+
+            num_batches = sum([min(len(train_iter), len(test_iter))
+                               for train_iter, test_iter in zip(meta_train_iters, meta_test_iters)])
+            batch_step = 1
+            start = time.time()
+            for idx in range(len(meta_test_iters)):
+                # select domain for meta train and meta test
+                meta_train_iter = meta_train_iters[idx]
+                meta_test_iter = meta_test_iters[idx]
+                for j, (train_batch, test_batch) in enumerate(zip(meta_train_iter, meta_test_iter), start=1):
+                    input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
+                    # remove unnecessary pad token
+                    seq_len = torch.sum(torch.sign(input_ids), 1)
+                    max_len = torch.max(seq_len)
+                    input_ids = input_ids[:, :max_len].to(self.device)
+                    input_mask = input_mask[:, :max_len].to(self.device)
+                    seg_ids = seg_ids[:, :max_len].to(self.device)
+                    start_positions = start_positions.to(self.device)
+                    end_positions = end_positions.to(self.device)
+                    train_batch = (input_ids, input_mask, seg_ids, start_positions, end_positions)
+                    # get features
+
+                    input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
+                    # remove unnecessary pad token
+                    seq_len = torch.sum(torch.sign(input_ids), 1)
+                    max_len = torch.max(seq_len)
+                    input_ids = input_ids[:, :max_len].to(self.device)
+                    input_mask = input_mask[:, :max_len].to(self.device)
+                    seg_ids = seg_ids[:, :max_len].to(self.device)
+                    start_positions = start_positions.to(self.device)
+                    end_positions = end_positions.to(self.device)
+
+                    test_batch = (input_ids, input_mask, seg_ids, start_positions, end_positions)
+                    loss_main, loss_dg, loss_held_out = self.model(train_batch, test_batch, self.config.lr,
+                                                                   self.theta_optimizer, self.phi_optimizer)
+
+                    # update feature extractor and classifier
+                    self.theta_optimizer.step()
+                    self.phi_optimizer.step()
+                    # update critic
+                    self.omega_optimizer.zero_grad()
+                    loss_held_out.backward()
+                    self.omega_optimizer.step()
+                    torch.cuda.empty_cache()
+
+                    avg_loss = self.cal_running_avg_loss(loss_main.item(), avg_loss)
+                    avg_dg_loss = self.cal_running_avg_loss(loss_dg.item(), avg_dg_loss)
+                    avg_meta_loss = self.cal_running_avg_loss(loss_held_out.item(), avg_meta_loss)
+                    msg = "{}/{} {} - ETA : {} - loss: {:.4f}, dg_loss: {:.4f}, meta_loss: {:.4f}" \
+                        .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
+                                eta(start, batch_step, num_batches),
+                                avg_loss, avg_dg_loss, avg_meta_loss)
+                    print(msg, end="\r")
+                    global_step += 1
+                    batch_step += 1
+            # save model every epoch
+            self.save_model(epoch, avg_loss)
+            del iter_lst
+
+    def save_model(self, epoch, loss):
+        loss = round(loss, 3)
+        save_file = os.path.join(self.save_dir, "feature_{}_{}".format(epoch, loss))
+        if hasattr(self.model, "module"):
+            model_to_save = self.model.module.feat_ext
+        else:
+            model_to_save = self.model.feat_ext
+        state_dict = model_to_save.state_dict()
+        torch.save(state_dict, save_file)
+
+        save_file = os.path.join(self.save_dir, "classifier_{}_{}".format(epoch, loss))
+        if hasattr(self.model, "module"):
+            model_to_save = self.model.module.classifier
+        else:
+            model_to_save = self.model.classfier
+
+        state_dict = model_to_save.state_dict()
+        torch.save(state_dict, save_file)
+
+    @staticmethod
+    def fix_nn(model, theta):
+        def k_param_fn(tmp_model, name=None):
+            if len(tmp_model._modules) != 0:
+                for (k, v) in tmp_model._modules.items():
+                    if name is None:
+                        k_param_fn(v, name=str(k))
+                    else:
+                        k_param_fn(v, name=str(name + '.' + k))
+            else:
+                for (k, v) in tmp_model._parameters.items():
+                    if not isinstance(v, torch.Tensor):
+                        continue
+                    tmp_model._parameters[k] = theta[str(name + '.' + k)]
+
+        k_param_fn(model)
+        return model
+
+
+class MetaTrainerOld(BaseTrainer):
+    def __init__(self, config):
+        self.set_random_seed()
+        self.config = config
+        self.save_dir = os.path.join("./save", "meta_{}".format(time.strftime("%m%d%H%M%S")))
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
+        self.tokenizer = BertTokenizer.from_pretrained(config.bert_model,
+                                                       do_lower_case=config.do_lower_case)
+        print("debugging mode:", config.debug)
+        self.features_lst = self.get_features(config.debug)
         self.device = torch.device("cuda:0")
         self.f_ext = FeatureExtractor(config.bert_model).to(self.device)
         self.classifier = Classifier(768).to(self.device)
@@ -288,7 +467,6 @@ class MetaTrainer(BaseTrainer):
                     # get features
                     features = self.f_ext(input_ids, seg_ids, input_mask)
                     loss_main = self.classifier(features, start_positions, end_positions)
-                    loss_main = loss_main / self.config.gradient_accumulation_steps
                     self.theta_optimizer.zero_grad()
                     self.phi_optimizer.zero_grad()
                     loss_main.backward(retain_graph=True)
