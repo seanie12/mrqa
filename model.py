@@ -90,7 +90,7 @@ class DGLearner(nn.Module):
                                                                    pretrained=False)
         self.temp_new_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
                                                                    pretrained=False)
-        self.critic = Critic(hidden_size=768)
+        self.critic = Critic(hidden_size=768) 
 
     def forward(self, train_batch, test_batch, lr, theta_opt, phi_opt):
         input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
