@@ -301,7 +301,7 @@ class MetaTrainer(BaseTrainer):
                     loss_main, loss_dg, loss_held_out = self.model(train_batch, test_batch, self.config.lr,
                                                                    self.theta_optimizer, self.phi_optimizer)
 
-                    loss_held_out = loss_held_out.mean()
+                    loss_main = loss_main.mean()
                     loss_dg = loss_dg.mean()
                     loss_held_out = loss_held_out.mean()
                     # update feature extractor and classifier

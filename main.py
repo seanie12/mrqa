@@ -1,7 +1,7 @@
 import argparse
 
 from generator.iterator import Config
-from trainer import BaseTrainer, MetaTrainer
+from trainer import BaseTrainer, MetaTrainerOld
 
 
 def main(args):
@@ -14,7 +14,7 @@ def main(args):
                     gradient_accumulation_steps=args.grad_accum,
                     config_file=args.config_file)
     if args.meta:
-        trainer = MetaTrainer(config)
+        trainer = MetaTrainerOld(config)
     else:
         trainer = BaseTrainer(config)
     trainer.train()
