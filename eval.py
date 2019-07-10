@@ -17,21 +17,24 @@ if __name__ == "__main__":
     parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
+    parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
 
     args = parser.parse_args()
 
     device = "cuda"
     model = BertForQuestionAnswering.from_pretrained(args.bert_model)
-    state_dict = torch.load(args.data_file)
+    state_dict = torch.load(args.model_path)
     model.load_state_dict(state_dict)
     model = model.to(device)
-    train_examples = read_squad_examples(args.file_path, debug=False)
-    # make empty dictionary because we don't need level file in test time
-    levels = dict()
+    eval_examples = read_squad_examples(args.file_path, debug=False)
     tokenizer = BertTokenizer.from_pretrained(args.bert_model)
-    eval_examples = set_level_in_examples(train_examples, levels)
+
+    # In test time, there is no level file and it is not necessary for inference
+    for example in eval_examples:
+        example.level = 0
+
     eval_features = convert_examples_to_features(
-        examples=train_examples,
+        examples=eval_examples,
         tokenizer=tokenizer,
         max_seq_length=args.config.max_seq_length,
         max_query_length=args.config.max_query_length,
