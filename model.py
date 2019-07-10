@@ -145,7 +145,7 @@ class DGLearner(nn.Module):
         utility = torch.tanh(reward)
         loss_held_out = - utility.sum()
 
-        return loss_main, loss_dg, loss_held_out
+        return loss_held_out
 
     @staticmethod
     def fix_nn(model, theta):

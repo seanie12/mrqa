@@ -298,11 +298,9 @@ class MetaTrainer(BaseTrainer):
                     end_positions = end_positions.to(self.device)
 
                     test_batch = (input_ids, input_mask, seg_ids, start_positions, end_positions)
-                    loss_main, loss_dg, loss_held_out = self.model(train_batch, test_batch, self.config.lr,
-                                                                   self.theta_optimizer, self.phi_optimizer)
+                    loss_held_out = self.model(train_batch, test_batch, self.config.lr,
+                                               self.theta_optimizer, self.phi_optimizer)
 
-                    loss_main = loss_main.mean()
-                    loss_dg = loss_dg.mean()
                     loss_held_out = loss_held_out.mean()
                     # update feature extractor and classifier
                     self.theta_optimizer.step()
@@ -314,13 +312,10 @@ class MetaTrainer(BaseTrainer):
                     self.omega_optimizer.step()
                     torch.cuda.empty_cache()
 
-                    avg_loss = self.cal_running_avg_loss(loss_main.item(), avg_loss)
-                    avg_dg_loss = self.cal_running_avg_loss(loss_dg.item(), avg_dg_loss)
                     avg_meta_loss = self.cal_running_avg_loss(loss_held_out.item(), avg_meta_loss)
-                    msg = "{}/{} {} - ETA : {} - loss: {:.4f}, dg_loss: {:.4f}, meta_loss: {:.4f}" \
+                    msg = "{}/{} {} - ETA : {} - meta_loss: {:.4f}" \
                         .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
-                                eta(start, batch_step, num_batches),
-                                avg_loss, avg_dg_loss, avg_meta_loss)
+                                eta(start, batch_step, num_batches),avg_meta_loss)
                     print(msg, end="\r")
                     global_step += 1
                     batch_step += 1
