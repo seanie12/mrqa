@@ -12,7 +12,8 @@ def main(args):
                     epochs=args.epochs,
                     debug=args.debug,
                     gradient_accumulation_steps=args.grad_accum,
-                    config_file=args.config_file)
+                    config_file=args.config_file,
+                    )
     if args.meta:
         trainer = MetaTrainerOld(config, args)
     else:
@@ -33,7 +34,6 @@ if __name__ == "__main__":
     parser.add_argument("--config_file", default="./data/bert_base_config.json", type=str, help="bert config file")
     parser.add_argument("--classifier_path", default="", type=str, help="classifier model path")
     parser.add_argument("--feature_path", default="", type=str, help="feature extractor model path")
-    parser.add_argument("--use_cuda", action="store_false", help="use gpu")
     parser.add_argument("--gpu_devices", type=str, default="0_1_2_3", help="gpu device ids to use")
     args = parser.parse_args()
     main(args)

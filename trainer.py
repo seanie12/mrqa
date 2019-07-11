@@ -34,7 +34,7 @@ class BaseTrainer(object):
 
         if self.device != "cpu":
             self.ngpu = torch.cuda.device_count()
-            self.devices = [int(i) for i in args.gpu_devices.split("_") if int(i) < self.ngpu]
+            self.devices = [int(i) for i in config.gpu_devices.split("_") if int(i) < self.ngpu]
 
         model = BertForQuestionAnswering.from_pretrained(config.bert_model)
         if self.ngpu > 1:

@@ -441,7 +441,8 @@ class Config(object):
                  lr=5e-5,
                  epochs=5,
                  debug=False,
-                 config_file=None):
+                 config_file=None,
+                 gpu_devices="0_"):
         self.bert_model = bert_model
         self.do_lower_case = do_lower_case
         self.max_seq_length = max_seq_length
@@ -454,6 +455,7 @@ class Config(object):
         self.epochs = epochs
         self.debug = debug
         self.config_file = config_file
+        self.gpu_devies = gpu_devices
 
 
 def write_predictions(all_examples, all_features, all_results, n_best_size,
