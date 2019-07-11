@@ -9,24 +9,8 @@ import collections
 import json
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, required=True, help="model path")
-    parser.add_argument("--file_path", type=str, required=True, help="data file to evaluate")
-    parser.add_argument("--prediction_file", type=str, required=True, help="prediction file")
-    parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
-    parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
-    parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
-    parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
-
-    args = parser.parse_args()
-
-    device = "cuda"
-    model = BertForQuestionAnswering.from_pretrained(args.bert_model)
-    state_dict = torch.load(args.model_path)
-    model.load_state_dict(state_dict)
-    model = model.to(device)
-    eval_examples = read_squad_examples(args.file_path, debug=False)
+def eval_qa(model, file_path, prediction_file, args):
+    eval_examples = read_squad_examples(file_path, debug=False)
     tokenizer = BertTokenizer.from_pretrained(args.bert_model)
 
     # In test time, there is no level file and it is not necessary for inference
@@ -77,8 +61,29 @@ if __name__ == "__main__":
 
     predictions = write_predictions(eval_examples, eval_features, all_results,
                                     n_best_size=20, max_answer_length=30, do_lower_case=True,
-                                    output_prediction_file=args.prediction_file)
+                                    output_prediction_file=prediction_file)
 
-    answers = read_answers(args.file_path)
-    metrics = evaluate(answers, predictions, args.skip_no_answer)
-    print(json.dumps(metrics))
+    answers = read_answers(file_path)
+    metrics = evaluate(answers, predictions, skip_no_answer=False)
+    metrics_dict = json.dumps(metrics)
+    return metrics_dict
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_path", type=str, required=True, help="model path")
+    parser.add_argument("--file_path", type=str, required=True, help="data file to evaluate")
+    parser.add_argument("--prediction_file", type=str, required=True, help="prediction file")
+    parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
+    parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
+    parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
+    parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
+
+    args = parser.parse_args()
+
+    device = "cuda"
+    model = BertForQuestionAnswering.from_pretrained(args.bert_model)
+    state_dict = torch.load(args.model_path)
+    model.load_state_dict(state_dict)
+    model = model.to(device)
+    metrics_dict = eval_qa(model, args.file_path, args.prediction_file, args)

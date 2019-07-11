@@ -30,9 +30,15 @@ class BaseTrainer(object):
                                                        do_lower_case=config.do_lower_case)
         print("debugging mode:", config.debug)
         self.features_lst = self.get_features(config.debug)
-        self.device = torch.device("cuda")
+        self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+        if self.device != "cpu":
+            self.ngpu = torch.cuda.device_count()
+            self.devices = [int(i) for i in args.gpu_devices.split("_") if int(i) < self.ngpu]
+
         model = BertForQuestionAnswering.from_pretrained(config.bert_model)
-        self.model = model.to(self.device)
+        if self.ngpu > 1:
+            self.model = nn.DataParallel(model, device_ids=self.devices)
         param_optimizer = list(model.named_parameters())
 
         # hack to remove pooler, which is not used
@@ -315,7 +321,7 @@ class MetaTrainer(BaseTrainer):
                     avg_meta_loss = self.cal_running_avg_loss(loss_held_out.item(), avg_meta_loss)
                     msg = "{}/{} {} - ETA : {} - meta_loss: {:.4f}" \
                         .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
-                                eta(start, batch_step, num_batches),avg_meta_loss)
+                                eta(start, batch_step, num_batches), avg_meta_loss)
                     print(msg, end="\r")
                     global_step += 1
                     batch_step += 1
@@ -362,7 +368,7 @@ class MetaTrainer(BaseTrainer):
 
 
 class MetaTrainerOld(BaseTrainer):
-    def __init__(self, config):
+    def __init__(self, config, args):
         self.set_random_seed()
         self.config = config
         self.save_dir = os.path.join("./save", "meta_{}".format(time.strftime("%m%d%H%M%S")))
@@ -373,8 +379,19 @@ class MetaTrainerOld(BaseTrainer):
         print("debugging mode:", config.debug)
         self.features_lst = self.get_features(config.debug)
         self.device = torch.device("cuda:0")
+
         self.f_ext = FeatureExtractor(config.bert_model).to(self.device)
+        path = args.feature_path
+        if len(path) != 0:
+            state_dict = torch.load(path)
+            self.f_ext.load_state_dict(state_dict)
         self.classifier = Classifier(768).to(self.device)
+
+        path = args.classifier_path
+        if len(path) != 0:
+            state_dict = torch.load(path)
+            self.classifier.load_state_dict(state_dict)
+
         self.critic = Critic(768).to(self.device)
 
         param_optimizer = list(self.f_ext.named_parameters())
