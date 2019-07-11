@@ -455,7 +455,7 @@ class Config(object):
         self.epochs = epochs
         self.debug = debug
         self.config_file = config_file
-        self.gpu_devies = gpu_devices
+        self.gpu_devices = gpu_devices
 
 
 def write_predictions(all_examples, all_features, all_results, n_best_size,
