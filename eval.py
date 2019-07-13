@@ -1,6 +1,5 @@
 from pytorch_pretrained_bert import BertForQuestionAnswering, BertTokenizer
-from generator.iterator import read_squad_examples, convert_examples_to_features, write_predictions, \
-    set_level_in_examples
+from generator.iterator import read_squad_examples, convert_examples_to_features, write_predictions
 from mrqa_official_eval import evaluate, read_answers
 import argparse
 import torch
@@ -9,7 +8,7 @@ import collections
 import json
 
 
-def eval_qa(model, file_path, prediction_file, args):
+def eval_qa(model, file_path, prediction_file, device, args):
     eval_examples = read_squad_examples(file_path, debug=False)
     tokenizer = BertTokenizer.from_pretrained(args.bert_model)
 
@@ -20,9 +19,9 @@ def eval_qa(model, file_path, prediction_file, args):
     eval_features = convert_examples_to_features(
         examples=eval_examples,
         tokenizer=tokenizer,
-        max_seq_length=args.config.max_seq_length,
-        max_query_length=args.config.max_query_length,
-        doc_stride=args.config.doc_stride,
+        max_seq_length=args.max_seq_length,
+        max_query_length=args.max_query_length,
+        doc_stride=args.doc_stride,
         is_training=False
     )
     all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
@@ -43,9 +42,9 @@ def eval_qa(model, file_path, prediction_file, args):
         input_ids, input_mask, seg_ids = batch
         seq_len = torch.sum(torch.sign(input_ids), 1)
         max_len = torch.max(seq_len)
-        input_ids = input_ids[:, :max_len]
-        input_mask = input_mask[:, :max_len]
-        seg_ids = seg_ids[:, :max_len]
+        input_ids = input_ids[:, :max_len].to(device)
+        input_mask = input_mask[:, :max_len].to(device)
+        seg_ids = seg_ids[:, :max_len].to(device)
         with torch.no_grad():
             batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
             batch_size = batch_start_logits.size(0)
@@ -59,14 +58,15 @@ def eval_qa(model, file_path, prediction_file, args):
                                          start_logits=start_logits,
                                          end_logits=end_logits))
 
-    predictions = write_predictions(eval_examples, eval_features, all_results,
-                                    n_best_size=20, max_answer_length=30, do_lower_case=True,
-                                    output_prediction_file=prediction_file)
+    preds = write_predictions(eval_examples, eval_features, all_results,
+                              n_best_size=20, max_answer_length=30, do_lower_case=True,
+                              output_prediction_file=prediction_file)
 
     answers = read_answers(file_path)
-    metrics = evaluate(answers, predictions, skip_no_answer=False)
-    metrics_dict = json.dumps(metrics)
-    return metrics_dict
+    preds_dict = json.loads(preds)
+    metrics = evaluate(answers, preds_dict, skip_no_answer=False)
+
+    return metrics
 
 
 if __name__ == "__main__":
@@ -78,12 +78,14 @@ if __name__ == "__main__":
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
     parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
-
+    parser.add_argument("--device", default="cuda:0", type=str, help="device ")
     args = parser.parse_args()
 
-    device = "cuda"
     model = BertForQuestionAnswering.from_pretrained(args.bert_model)
     state_dict = torch.load(args.model_path)
     model.load_state_dict(state_dict)
-    model = model.to(device)
-    metrics_dict = eval_qa(model, args.file_path, args.prediction_file, args)
+    model = model.to(args.device)
+    metrics_dict = eval_qa(model, args.file_path,
+                           args.prediction_file,
+                           args.device,
+                           args)

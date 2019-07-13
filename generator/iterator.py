@@ -6,7 +6,6 @@ import collections
 import json
 from pytorch_pretrained_bert.tokenization import BertTokenizer, BasicTokenizer
 import math
-from tqdm import tqdm
 import numpy as np
 
 
@@ -18,7 +17,7 @@ def get_logger(log_name):
     logger = logging.getLogger()
     logger.addHandler(logging.StreamHandler(sys.stdout))  # For print out the result on console
     logger.info('')
-    logger.info("#################################### New Start #####################################")
+    # logger.info("#################################### New Start #####################################")
     return logger
 
 
@@ -222,7 +221,7 @@ def read_squad_examples(input_file, debug=False):
 
 
 def convert_examples_to_features(examples, tokenizer, max_seq_length,
-                                 doc_stride, max_query_length, is_training):
+                                 doc_stride, max_query_length, is_training, verbose=False):
     """
     max_seq_length: "The maximum total input sequence length after WordPiece tokenization. Sequences 
                     longer than this will be truncated, and sequences shorter than this will be padded."
@@ -232,7 +231,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
     unique_id = 1000000000
 
     features = []
-    for (example_index, example) in tqdm(enumerate(examples), total=len(examples)):
+    for (example_index, example) in enumerate(examples):
         query_tokens = tokenizer.tokenize(example.question_text)
 
         if len(query_tokens) > max_query_length:
@@ -342,7 +341,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 start_position = tok_start_position - doc_start + doc_offset
                 end_position = tok_end_position - doc_start + doc_offset
 
-            if example_index < 20:
+            if example_index < 20 and verbose:
                 logger.info("*** Example ***")
                 logger.info("unique_id: %s" % (unique_id))
                 logger.info("example_index: %s" % (example_index))
@@ -391,8 +390,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
 
 def read_level_file(input_file, sep='\t'):
     '''
-    - id, level의 두개의 column으로 존재
-    - 딕셔너리 형태로 저장함
+    - id sep level
+    - save it as dictionary
     '''
     levels = dict()
     with open(input_file, 'r', encoding='utf-8') as f:
@@ -405,22 +404,22 @@ def read_level_file(input_file, sep='\t'):
 
 def sort_features_by_level(features, desc=False):
     """
-    features: feature 객체가 들어있는 list
-    desc: 난이도별로 내림차순으로 정렬할 것인가
+    features: list of feature obj
+    desc: sorting descending order
     """
-    # 난이도 별로 sort하기
+    # sort element by level
     features.sort(key=lambda x: x.level, reverse=desc)
     return features
 
 
 def set_level_in_examples(examples, levels):
     """
-    examples: example 객체가 들어있는 list
-    levels: {'id1': 0.48. 'id2': 0.12, ...}의 딕셔너리
+    examples: list of example object
+    levels: {'id1': 0.48. 'id2': 0.12, ...} dictionary
     """
     for example in examples:
         try:
-            example.level = levels[example.qas_id]  # 해당 객체의 id를 levels의 딕셔너리에 넣으면 난이도가 나옴
+            example.level = levels[example.qas_id]
         except:
             print("Level doesn't exists...Setting the level 0.5 as default")
             example.level = 0.5
@@ -442,7 +441,7 @@ class Config(object):
                  epochs=5,
                  debug=False,
                  config_file=None,
-                 gpu_devices="0_"):
+                 gpu_devices="0"):
         self.bert_model = bert_model
         self.do_lower_case = do_lower_case
         self.max_seq_length = max_seq_length
@@ -462,7 +461,8 @@ def write_predictions(all_examples, all_features, all_results, n_best_size,
                       max_answer_length, do_lower_case, output_prediction_file,
                       verbose_logging=False, version_2_with_negative=False, null_score_diff_threshold=0):
     """Write final predictions to the json file and log-odds of null if needed."""
-    logger.info("Writing predictions to: %s" % (output_prediction_file))
+    if verbose_logging:
+        logger.info("Writing predictions to: %s" % (output_prediction_file))
 
     example_index_to_features = collections.defaultdict(list)
     for feature in all_features:
@@ -792,7 +792,7 @@ def iter_test(file_name):
     ***** Running training *****
         Num orig examples = 34287
         Num split examples = 35111 (train_features)
-    examples와 features의 길이가 서로 다르다. 그런데 난이도 함수는 보통 전체 데이터셋(examples) 기준
+    length of examples and features are different but difficulty function is based on examples 
     """
     # Read level
     levels = read_level_file('difficulty/{}.tsv'.format(file_name), sep='\t')
