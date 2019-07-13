@@ -54,7 +54,7 @@ def user_friendly_time(s):
 
 def eta(start, completed, total):
     """ Function returning an ETA. """
-    # Computation
+    # Computation :
     took = time_since(start)
     time_per_step = took / completed
     remaining_steps = total - completed
