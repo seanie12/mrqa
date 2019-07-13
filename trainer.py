@@ -167,7 +167,7 @@ class BaseTrainer(object):
                 train_sampler = RandomSampler(train_data)
                 dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
 
-            iter_lst.append(dataloader)
+            iter_lst.append((dataloader, train_sampler))
         return iter_lst
 
     def save_model(self, epoch, loss):
@@ -193,10 +193,13 @@ class BaseTrainer(object):
             level = 1.0
         for epoch in range(self.args.epochs):
             iter_lst = self.get_iter(self.features_lst, level, self.args)
-            num_batches = sum([len(iterator) for iterator in iter_lst])
+            num_batches = sum([len(iterator[0]) for iterator in iter_lst])
             start = time.time()
             batch_step = 1
-            for data_loader in iter_lst:
+            for data_loader, sampler in iter_lst:
+                if self.args.distributed:
+                    sampler.set_epoch(epoch)
+
                 if update_iter and self.args.curriculum:
                     update_iter = False
                     break
@@ -349,13 +352,21 @@ class MetaTrainer(BaseTrainer):
             assert len(meta_train_iters) == len(meta_test_iters)
 
             num_batches = sum([min(len(train_iter), len(test_iter))
-                               for train_iter, test_iter in zip(meta_train_iters, meta_test_iters)])
+                               for train_iter, test_iter in
+                               zip([t[0] for t in meta_train_iters], [t[0] for t in meta_test_iters])])
             batch_step = 1
             start = time.time()
             for idx in range(len(meta_test_iters)):
                 # select domain for meta train and meta test
-                meta_train_iter = meta_train_iters[idx]
-                meta_test_iter = meta_test_iters[idx]
+                meta_train_iter = meta_train_iters[idx][0]
+                meta_test_iter = meta_test_iters[idx][0]
+                meta_train_sampler = meta_train_iters[idx][1]
+                meta_test_sampler = meta_test_iters[idx][1]
+
+                if self.args.distributed:
+                    meta_train_sampler.set_epoch(epoch)
+                    meta_test_sampler.set_epoch(epoch)
+
                 for j, (train_batch, test_batch) in enumerate(zip(meta_train_iter, meta_test_iter), start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
                     # remove unnecessary pad token
