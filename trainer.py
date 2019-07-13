@@ -426,19 +426,10 @@ class MetaTrainer(BaseTrainer):
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
-        save_file = os.path.join(self.save_dir, "feature_{}_{}".format(epoch, loss))
+        save_file = os.path.join(self.save_dir, "meta_{}_{}".format(epoch, loss))
         if hasattr(self.model, "module"):
-            model_to_save = self.model.module.feat_ext
+            model_to_save = self.model.module
         else:
             model_to_save = self.model.feat_ext
-        state_dict = model_to_save.state_dict()
-        torch.save(state_dict, save_file)
-
-        save_file = os.path.join(self.save_dir, "classifier_{}_{}".format(epoch, loss))
-        if hasattr(self.model, "module"):
-            model_to_save = self.model.module.classifier
-        else:
-            model_to_save = self.model.classfier
-
         state_dict = model_to_save.state_dict()
         torch.save(state_dict, save_file)
