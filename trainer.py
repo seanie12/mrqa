@@ -46,9 +46,13 @@ class BaseTrainer(object):
         self.set_random_seed(random_seed=args.random_seed)
         self.save_dir = os.path.join("./save",
                                      "{}_{}".format("meta" if args.meta else "base", time.strftime("%m%d%H%M")))
-        self.result_dir = os.path.join("./result", "{}_{}".format("meta" if args.meta else "base", time.strftime("%m%d%H%M")))
+        self.result_dir = os.path.join("./result",
+                                       "{}_{}".format("meta" if args.meta else "base", time.strftime("%m%d%H%M")))
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
+
+        if not os.path.exists(self.result_dir):
+            os.makedirs(self.result_dir)
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_model,
                                                        do_lower_case=args.do_lower_case)
         if args.debug:
@@ -236,7 +240,8 @@ class BaseTrainer(object):
             print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_loss))
             # save model
             if self.args.rank == 0:
-                result_dict = self.save_model(epoch, avg_loss)
+                self.save_model(epoch, avg_loss)
+                result_dict = self.evaluate_model(epoch)
                 for dev_file, f1 in result_dict.items():
                     print("{}: {:.2f}, ".format(dev_file, f1), end="")
                 print("")
@@ -266,7 +271,6 @@ class BaseTrainer(object):
         fw.close()
 
         return result_dict
-
 
     @staticmethod
     def cal_running_avg_loss(loss, running_avg_loss, decay=0.99):
@@ -328,7 +332,7 @@ class MetaTrainer(BaseTrainer):
         avg_meta_loss = 0
         for epoch in range(self.args.epochs):
             # get data below certain level
-            levels = [0.5, 0.7, 0.8, 0.9, 1.0]
+            levels = [0.8, 0.85, 0.9, 0.95, 1.0]
             if self.args.curriculum:
                 idx = min(epoch, len(levels) - 1)
                 level = levels[idx]
@@ -403,6 +407,10 @@ class MetaTrainer(BaseTrainer):
             # save model every epoch
             if self.args.rank == 0:
                 self.save_model(epoch, avg_meta_loss)
+                result_dict = self.evaluate_model(epoch)
+                for dev_file, f1 in result_dict.items():
+                    print("{}: {:.2f}, ".format(dev_file, f1), end="")
+                print("")
             del iter_lst
 
     def save_model(self, epoch, loss):

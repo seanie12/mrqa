@@ -1,6 +1,6 @@
 import argparse
 from trainer import BaseTrainer, MetaTrainer
-from utils import distributed_main
+from distributed_run import distributed_main
 import torch
 
 

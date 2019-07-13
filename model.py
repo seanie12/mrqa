@@ -35,23 +35,26 @@ class Classifier(nn.Module):
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
-        # If we are on multi-GPU, split add a dimension
-        if len(start_positions.size()) > 1:
-            start_positions = start_positions.squeeze(-1)
-        if len(end_positions.size()) > 1:
-            end_positions = end_positions.squeeze(-1)
-        # sometimes the start/end positions are outside our model inputs, we ignore these terms
-        ignored_index = start_logits.size(1)
-        start_positions = start_positions.clamp(0, ignored_index)
-        end_positions = end_positions.clamp(0, ignored_index)
-        # start_positions.clamp_(0, ignored_index)
-        # end_positions.clamp_(0, ignored_index)
+        if start_positions is not None and end_positions is not None:
+            # If we are on multi-GPU, split add a dimension
+            if len(start_positions.size()) > 1:
+                start_positions = start_positions.squeeze(-1)
+            if len(end_positions.size()) > 1:
+                end_positions = end_positions.squeeze(-1)
+            # sometimes the start/end positions are outside our model inputs, we ignore these terms
+            ignored_index = start_logits.size(1)
+            start_positions = start_positions.clamp(0, ignored_index)
+            end_positions = end_positions.clamp(0, ignored_index)
+            # start_positions.clamp_(0, ignored_index)
+            # end_positions.clamp_(0, ignored_index)
 
-        loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
-        start_loss = loss_fct(start_logits, start_positions)
-        end_loss = loss_fct(end_logits, end_positions)
-        total_loss = (start_loss + end_loss) / 2
-        return total_loss
+            loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+            start_loss = loss_fct(start_logits, start_positions)
+            end_loss = loss_fct(end_logits, end_positions)
+            total_loss = (start_loss + end_loss) / 2
+            return total_loss
+        else:
+            return start_logits, end_logits
 
 
 class Critic(nn.Module):
@@ -82,14 +85,15 @@ class Critic(nn.Module):
 
 
 class DGLearner(nn.Module):
-    def __init__(self, bert_config):
+    def __init__(self, bert_config, init_temp=True):
         super(DGLearner, self).__init__()
         self.feat_ext = FeatureExtractor()
         self.classifier = Classifier(hidden_size=768)
-        self.temp_old_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
-                                                                   pretrained=False)
-        self.temp_new_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
-                                                                   pretrained=False)
+        if init_temp:
+            self.temp_old_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
+                                                                       pretrained=False)
+            self.temp_new_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
+                                                                       pretrained=False)
         self.critic = Critic(hidden_size=768)
 
     def forward(self, train_batch, test_batch, lr, theta_opt, phi_opt):
@@ -164,3 +168,9 @@ class DGLearner(nn.Module):
 
         k_param_fn(model)
         return model
+
+    def predict(self, input_ids, input_mask, seg_ids):
+        features = self.feat_ext(input_ids, seg_ids, input_mask)
+        start_logits, end_logits = self.classifier(features)
+
+        return start_logits, end_logits

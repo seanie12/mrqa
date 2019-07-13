@@ -46,7 +46,10 @@ def eval_qa(model, file_path, prediction_file, device, args):
         input_mask = input_mask[:, :max_len].to(device)
         seg_ids = seg_ids[:, :max_len].to(device)
         with torch.no_grad():
-            batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
+            if args.meta:
+                batch_start_logits, batch_end_logits= model.predict(input_ids, seg_isd, input_mask)
+            else:
+                batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
             batch_size = batch_start_logits.size(0)
         for i in range(batch_size):
             example_index += 1
