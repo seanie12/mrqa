@@ -86,6 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
     parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
+    parser.add_argument("--doc_stride", default=128, type=int, help="document stride")
     parser.add_argument("--device", default="cuda:0", type=str, help="device ")
     args = parser.parse_args()
 
