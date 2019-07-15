@@ -18,7 +18,8 @@ from torch.utils.data.distributed import DistributedSampler
 
 from eval import eval_qa
 from generator.iterator import read_squad_examples, \
-    read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
+    read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features, write_predictions
+
 from model import DGLearner
 from utils import eta, progress_bar
 
@@ -44,23 +45,21 @@ class BaseTrainer(object):
     def __init__(self, args):
         self.args = args
         self.set_random_seed(random_seed=args.random_seed)
-        self.save_dir = os.path.join("./save",
-                                     "{}_{}".format("meta" if args.meta else "base", time.strftime("%m%d%H%M")))
-        self.result_dir = os.path.join("./result",
-                                       "{}_{}".format("meta" if args.meta else "base", time.strftime("%m%d%H%M")))
-        if not os.path.exists(self.save_dir):
-            os.makedirs(self.save_dir)
 
-        if not os.path.exists(self.result_dir):
-            os.makedirs(self.result_dir)
+        self.save_dir = os.path.join("./save",
+                                     "{}_{}".format("meta" if self.args.meta else "base", time.strftime("%m%d%H%M")))
+        self.result_dir = os.path.join("./result",
+                                       "{}_{}".format("meta" if self.args.meta else "base", time.strftime("%m%d%H%M")))
+
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_model,
                                                        do_lower_case=args.do_lower_case)
         if args.debug:
             print("debugging mode on.")
-        self.features_lst = self.get_features(args.debug)
+        self.features_lst = self.get_features(self.args.train_folder, self.args.debug)
 
-    def make_model_env(self, gpu, ngpus_per_node):
-        self.args.gpu = self.args.devices[gpu]
+    def make_model_env(self, gpu, ngpus_per_node) :
+        if gpu is not None :
+            self.args.gpu = self.args.devices[gpu]
 
         if self.args.use_cuda and self.args.distributed:
             if self.args.multiprocessing_distributed:
@@ -71,10 +70,19 @@ class BaseTrainer(object):
                                     world_size=self.args.world_size, rank=self.args.rank)
 
         self.model = BertForQuestionAnswering.from_pretrained(self.args.bert_model)
+        if self.args.load_model is not None :
+            print("loading model from ", self.args.load_model)
+            #self.model.load_state_dict(torch.load(self.args.load_model))
+            self.model.load_state_dict(torch.load(self.args.load_model, map_location=lambda storage, loc: storage))
 
         max_len = max([len(f) for f in self.features_lst])
         num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
                                        * self.args.epochs * len(self.features_lst)
+        
+        if self.args.freeze_bert :
+            for param in self.model.bert.parameters():
+                param.requires_grad = False
+
         self.optimizer = get_opt(list(self.model.named_parameters()), num_train_optimization_steps, self.args)
 
         if self.args.use_cuda:
@@ -86,16 +94,28 @@ class BaseTrainer(object):
                 self.model = DistributedDataParallel(self.model, device_ids=[self.args.gpu],
                                                      find_unused_parameters=True)
             else:
+                self.model.cuda()
                 self.model = DataParallel(self.model, device_ids=self.args.devices)
 
         cudnn.benchmark = True
 
-    def get_features(self, debug=False):
-        # train_folder = "./data/train"
-        # train_folder = "/home/adam/data/mrqa2019/download_train/revised"
-        # level_folder = "./generator/difficulty"
-        # pickled_folder = "./pickled_data"
-        train_folder = self.args.train_folder
+    def make_run_env(self) :
+        if not os.path.exists(self.save_dir) and self.args.rank == 0 :
+            os.makedirs(self.save_dir)
+        if not os.path.exists(self.result_dir) and self.args.rank == 0 :
+            os.makedirs(self.result_dir)
+
+        # distributing dev file evaluation task
+        self.dev_files = []
+        gpu_num = len(self.args.devices)
+        files = os.listdir(self.args.dev_folder)
+        for i in range(len(files)) :
+            if i % gpu_num == self.args.rank :
+                self.dev_files.append(files[i])
+
+        print("GPU {}".format(self.args.gpu), self.dev_files)
+
+    def get_features(self, train_folder, debug=False):
         level_folder = self.args.level_folder
         pickled_folder = self.args.pickled_folder
 
@@ -103,6 +123,7 @@ class BaseTrainer(object):
             os.mkdir(pickled_folder)
 
         features_lst = []
+
         files = [f for f in os.listdir(train_folder) if f.endswith(".gz")]
         print("the number of data-set:{}".format(len(files)))
         for file in files:
@@ -134,6 +155,7 @@ class BaseTrainer(object):
                     is_training=True
                 )
                 train_features = sort_features_by_level(train_features, desc=False)
+
                 features_lst.append(train_features)
 
                 # Save feature lst as pickle (For reuse & fast loading)
@@ -141,13 +163,17 @@ class BaseTrainer(object):
                     with open(pickle_file_path, 'wb') as pkl_f:
                         print("Saving {} file as pkl...".format(data_name))
                         pickle.dump(train_features, pkl_f)
+
         return features_lst
 
     @staticmethod
     def get_iter(features_lst, level, args):
         iter_lst = []
         for train_features in features_lst:
-            num_data = int(len(train_features) * level) - 1
+            if level is not None :
+                num_data = int(len(train_features) * level) - 1
+            else :
+                num_data = len(train_features)
             train_features = train_features[:num_data]
 
             all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
@@ -173,8 +199,8 @@ class BaseTrainer(object):
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
 
-        save_file = os.path.join(self.save_dir, "base_model_{}_{:.3f}.json".format(epoch, loss))
-        save_file_config = os.path.join(self.save_dir, "base_config_{}_{:.3f}.json".format(epoch, loss))
+        save_file = os.path.join(self.save_dir, "base_model_{}_{:.3f}".format(epoch, loss))
+        save_file_config = os.path.join(self.save_dir, "base_config_{}_{:.3f}".format(epoch, loss))
 
         model_to_save = self.model.module if hasattr(self.model,
                                                      'module') else self.model  # Only save the model it-self
@@ -191,7 +217,7 @@ class BaseTrainer(object):
             level = 0.5
         else:
             level = 1.0
-        for epoch in range(self.args.epochs):
+        for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
             iter_lst = self.get_iter(self.features_lst, level, self.args)
             num_batches = sum([len(iterator[0]) for iterator in iter_lst])
             start = time.time()
@@ -241,36 +267,40 @@ class BaseTrainer(object):
                         break
 
             print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_loss))
+            del iter_lst
+            
             # save model
             if self.args.rank == 0:
                 self.save_model(epoch, avg_loss)
+
+            if self.args.do_valid :
                 result_dict = self.evaluate_model(epoch)
                 for dev_file, f1 in result_dict.items():
-                    print("{}: {:.2f}, ".format(dev_file, f1), end="")
-                print("")
-            del iter_lst
+                    print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
     def evaluate_model(self, epoch):
-        model = self.model.module if hasattr(self.model, "module") else self.model
-        dev_dir = "./data/dev"
-        dev_files = os.listdir(dev_dir)
+        #model = self.model.module if hasattr(self.model, "module") else self.model
         # result directory
         result_dir = os.path.join(self.result_dir, "base_{}".format(epoch))
         if not os.path.exists(result_dir):
             os.makedirs(result_dir)
 
         result_file = os.path.join(result_dir, "dev_eval.txt")
-        fw = open(result_file, "w")
+        #fw = open(result_file, "w")
+        fw = open(result_file, "a")
         result_dict = dict()
-        for dev_file in dev_files:
+        for dev_file in self.dev_files :
             file_name = dev_file.split(".")[0]
             prediction_file = os.path.join(result_dir, "epoch_{}_{}_.json".format(epoch, file_name))
-            file_path = os.path.join(dev_dir, dev_file)
-            metrics = eval_qa(model, file_path, prediction_file, device="cuda", args=self.args)
+            file_path = os.path.join(self.args.dev_folder, dev_file)
+            metrics = eval_qa(self.model, file_path
+                                , prediction_file, device="cuda", args=self.args
+                                , tokenizer=self.tokenizer
+                                , batch_size=self.args.batch_size
+                                )
             f1 = metrics["f1"]
             fw.write("{} : {}\n".format(file_name, f1))
             result_dict[dev_file] = f1
-
         fw.close()
 
         return result_dict
@@ -305,6 +335,13 @@ class MetaTrainer(BaseTrainer):
                                     world_size=self.args.world_size, rank=self.args.rank)
 
         self.model = DGLearner(self.args.bert_config_file)
+        if self.args.load_model is not None :
+            print("loading model from ", self.args.load_model)
+            self.model.load_state_dict(torch.load(self.args.load_model))
+
+        if self.args.freeze_bert :
+            for param in self.model.bert.parameters():
+                param.requires_grad = False
 
         max_len = max([len(f) for f in self.features_lst])
         num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
@@ -333,7 +370,7 @@ class MetaTrainer(BaseTrainer):
     def train(self):
         step = 1
         avg_meta_loss = 0
-        for epoch in range(self.args.epochs):
+        for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
             # get data below certain level
             levels = [0.8, 0.85, 0.9, 0.95, 1.0]
             if self.args.curriculum:
@@ -415,14 +452,16 @@ class MetaTrainer(BaseTrainer):
                     print(msg, end="\r")
 
             print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_meta_loss))
-            # save model every epoch
+            del iter_lst
+
+            # save model
             if self.args.rank == 0:
                 self.save_model(epoch, avg_meta_loss)
+
+            if self.args.do_valid :
                 result_dict = self.evaluate_model(epoch)
                 for dev_file, f1 in result_dict.items():
-                    print("{}: {:.2f}, ".format(dev_file, f1), end="")
-                print("")
-            del iter_lst
+                    print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)

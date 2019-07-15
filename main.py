@@ -27,8 +27,9 @@ if __name__ == "__main__":
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
     parser.add_argument("--doc_stride", default=128, type=int)
-    parser.add_argument("--batch_size", default=64, type=int, help="batch size")
+    parser.add_argument("--batch_size", default=512, type=int, help="batch size")
     parser.add_argument("--epochs", default=2, type=int, help="number of epochs")
+    parser.add_argument("--start_epoch", default=0, type=int, help="starting epoch point")
     parser.add_argument("--lr", default=3e-5, type=float)
     parser.add_argument("--warmup_proportion", default=0.1, type=float)
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int, help="gradient_accumulation_steps")
@@ -38,8 +39,14 @@ if __name__ == "__main__":
     parser.add_argument("--use_cuda", default=True, help="use cuda or not")
     parser.add_argument("--curriculum", default=False, help="enable curriculum mechanism")
 
+    parser.add_argument("--do_valid", default=True, help="do validation or not")
+    parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
+
     parser.add_argument("--train_folder"
                         , default="./data/train"
+                        , type=str, help="path of training data file")
+    parser.add_argument("--dev_folder"
+                        , default="./data/dev"
                         , type=str, help="path of training data file")
     parser.add_argument("--level_folder"
                         , default="./generator/difficulty"
@@ -47,6 +54,9 @@ if __name__ == "__main__":
     parser.add_argument("--pickled_folder"
                         , default="./pickled_data"
                         , type=str, help="path of saved pickle file")
+    parser.add_argument("--load_model"
+                        , default=None
+                        , type=str, help="load model")
 
     parser.add_argument("--devices",
                         type=str,

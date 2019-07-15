@@ -8,9 +8,9 @@ import collections
 import json
 
 
-def eval_qa(model, file_path, prediction_file, device, args):
+def eval_qa(model, file_path, prediction_file, device, args, tokenizer, batch_size = 50):
     eval_examples = read_squad_examples(file_path, debug=False)
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model)
+    #tokenizer = BertTokenizer.from_pretrained(args.bert_model)
 
     # In test time, there is no level file and it is not necessary for inference
     for example in eval_examples:
@@ -30,7 +30,7 @@ def eval_qa(model, file_path, prediction_file, device, args):
 
     eval_data = TensorDataset(all_input_ids, all_input_mask, all_segment_ids)
     sampler = SequentialSampler(eval_data)
-    eval_loader = DataLoader(eval_data, sampler=sampler, batch_size=args.batch_size)
+    eval_loader = DataLoader(eval_data, sampler=sampler, batch_size=batch_size)
 
     RawResult = collections.namedtuple("RawResult",
                                        ["unique_id", "start_logits", "end_logits"])
@@ -42,12 +42,17 @@ def eval_qa(model, file_path, prediction_file, device, args):
         input_ids, input_mask, seg_ids = batch
         seq_len = torch.sum(torch.sign(input_ids), 1)
         max_len = torch.max(seq_len)
-        input_ids = input_ids[:, :max_len].to(device)
-        input_mask = input_mask[:, :max_len].to(device)
-        seg_ids = seg_ids[:, :max_len].to(device)
+        #input_ids = input_ids[:, :max_len].to(device)
+        #input_mask = input_mask[:, :max_len].to(device)
+        #seg_ids = seg_ids[:, :max_len].to(device)
+        
+        input_ids = input_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
+        input_mask = input_mask[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
+        seg_ids = seg_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
+        
         with torch.no_grad():
             if args.meta:
-                batch_start_logits, batch_end_logits= model.predict(input_ids, seg_isd, input_mask)
+                batch_start_logits, batch_end_logits= model.predict(input_ids, seg_ids, input_mask)
             else:
                 batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
             batch_size = batch_start_logits.size(0)

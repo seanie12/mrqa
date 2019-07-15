@@ -29,7 +29,7 @@ class Classifier(nn.Module):
         super(Classifier, self).__init__()
         self.linear = nn.Linear(hidden_size, 2)
 
-    def forward(self, features, start_positions, end_positions):
+    def forward(self, features, start_positions=None, end_positions=None):
         # features : [b,t,d]
         logits = self.linear(features)
         start_logits, end_logits = logits.split(1, dim=-1)

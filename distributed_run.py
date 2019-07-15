@@ -17,11 +17,12 @@ def distributed_main(args):
 
 
 def worker(gpu, ngpus_per_node, args):
+
     if args.meta:
         model = MetaTrainer(args)
     else:
         model = BaseTrainer(args)
 
     model.make_model_env(gpu, ngpus_per_node)
-
+    model.make_run_env()
     model.train()
