@@ -268,7 +268,7 @@ class BaseTrainer(object):
 
                     if global_step % 2000 == 0 and new_level > 0.5:
                         update_iter = True
-                        iter_lst = self.get_iter(self.features_lst, new_level, self.args.batch_size)
+                        iter_lst = self.get_iter(self.features_lst, new_level, self.args)
                         num_batches = sum([len(iterator) for iterator in iter_lst])
                         break
 
