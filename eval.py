@@ -8,9 +8,9 @@ import collections
 import json
 
 
-def eval_qa(model, file_path, prediction_file, device, args, tokenizer, batch_size = 50):
+def eval_qa(model, file_path, prediction_file,  args, tokenizer, batch_size=50):
     eval_examples = read_squad_examples(file_path, debug=False)
-    #tokenizer = BertTokenizer.from_pretrained(args.bert_model)
+    # tokenizer = BertTokenizer.from_pretrained(args.bert_model)
 
     # In test time, there is no level file and it is not necessary for inference
     for example in eval_examples:
@@ -42,17 +42,17 @@ def eval_qa(model, file_path, prediction_file, device, args, tokenizer, batch_si
         input_ids, input_mask, seg_ids = batch
         seq_len = torch.sum(torch.sign(input_ids), 1)
         max_len = torch.max(seq_len)
-        #input_ids = input_ids[:, :max_len].to(device)
-        #input_mask = input_mask[:, :max_len].to(device)
-        #seg_ids = seg_ids[:, :max_len].to(device)
-        
+        # input_ids = input_ids[:, :max_len].to(device)
+        # input_mask = input_mask[:, :max_len].to(device)
+        # seg_ids = seg_ids[:, :max_len].to(device)
+
         input_ids = input_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
         input_mask = input_mask[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
         seg_ids = seg_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
-        
+
         with torch.no_grad():
             if args.meta:
-                batch_start_logits, batch_end_logits= model.predict(input_ids, seg_ids, input_mask)
+                batch_start_logits, batch_end_logits = model.predict(input_ids, seg_ids, input_mask)
             else:
                 batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
             batch_size = batch_start_logits.size(0)
@@ -90,11 +90,12 @@ if __name__ == "__main__":
     parser.add_argument("--device", default="cuda:0", type=str, help="device ")
     args = parser.parse_args()
 
+    tokenizer = BertTokenizer.from_pretrained(args.bert_model)
     model = BertForQuestionAnswering.from_pretrained(args.bert_model)
     state_dict = torch.load(args.model_path)
     model.load_state_dict(state_dict)
     model = model.to(args.device)
     metrics_dict = eval_qa(model, args.file_path,
                            args.prediction_file,
-                           args.device,
-                           args)
+                           args,
+                           tokenizer)

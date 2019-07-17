@@ -23,6 +23,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="debugging mode")
     parser.add_argument("--meta", action="store_true", help="whether to trian meta")
+    parser.add_argument("--meta_lambda", default=0.5, help="meta lambda")
     parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
@@ -37,7 +38,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--do_lower_case", default=True, help="do lower case on text")
     parser.add_argument("--use_cuda", default=True, help="use cuda or not")
-    parser.add_argument("--curriculum", default=False, help="enable curriculum mechanism")
+    parser.add_argument("--curriculum", action="store_true", help="enable curriculum mechanism")
 
     parser.add_argument("--do_valid", default=True, help="do validation or not")
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")

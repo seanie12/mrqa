@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from pytorch_pretrained_bert import BertModel, BertConfig
 import torch.nn.functional as F
+import torch.autograd as autograd
 
 
 class FeatureExtractor(nn.Module):
@@ -174,3 +175,97 @@ class DGLearner(nn.Module):
         start_logits, end_logits = self.classifier(features)
 
         return start_logits, end_logits
+
+
+class MetaLearner(nn.Module):
+    def __init__(self, bert_config, meta_lambda):
+        super(MetaLearner, self).__init__()
+        self.meta_lambda = meta_lambda
+        config = BertConfig(bert_config)
+        self.bert = BertModel(config)
+        self.fc1 = nn.Linear(768, 768)
+
+        self.fc2 = nn.Linear(768, 2)
+        # freeze bert
+        for param in self.bert.parameters():
+            param.requires_grad = False
+
+    def forward(self, train_batch, test_batch, lr):
+        with torch.no_grad():
+            input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
+            features, _ = self.bert(input_ids,
+                                    seg_ids,
+                                    input_mask,
+                                    output_all_encoded_layers=False)
+
+        hidden = self.gelu(self.fc1(features))
+        logits = self.fc2(hidden)
+        meta_train_loss = self.get_loss(logits, start_positions, end_positions)
+
+        with torch.no_grad():
+            input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
+            features = self.bert(input_ids, seg_ids, input_mask, output_all_encoded_layers=False)
+
+        grad_weight = autograd.grad(meta_train_loss, self.fc1.weight, create_graph=True)[0]
+        adapt_weight = self.fc1.weight - lr * grad_weight
+
+        grad_bias = autograd.grad(meta_train_loss, self.fc1.bias, create_graph=True)[0]
+        adapt_bias = self.fc1.bias - lr * grad_bias
+
+        hidden = F.linear(features, adapt_weight, adapt_bias)
+        hidden = self.gelu(hidden)
+
+        grad_weight = autograd.grad(meta_train_loss, self.fc2.weight, create_graph=True)[0]
+        adapt_weight = self.fc2.weight - lr * grad_weight
+
+        grad_bias = autograd.grad(meta_train_loss, self.fc2.bias, create_graph=True)[0]
+        adapt_bias = self.fc2.bias - lr * grad_bias
+
+        logits = F.linear(hidden, adapt_weight, adapt_bias)
+        meta_test_loss = self.get_loss(logits, start_positions, end_positions)
+
+        total_loss = meta_train_loss + self.meta_lambda * meta_test_loss
+        return total_loss
+
+    def predict(self, input_ids, input_mask, seg_ids):
+        features = self.bert(input_ids, seg_ids, input_mask)
+        hidden = self.gelu(self.fc1(features))
+        logits = self.fc2(hidden)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        return start_logits, end_logits
+
+    @staticmethod
+    def gelu(x):
+        """Implementation of the gelu activation function.
+            For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+            0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+            Also see https://arxiv.org/abs/1606.08415
+        """
+        return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+
+    @staticmethod
+    def get_loss(logits, start_positions, end_positions):
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        # If we are on multi-GPU, split add a dimension
+        if len(start_positions.size()) > 1:
+            start_positions = start_positions.squeeze(-1)
+        if len(end_positions.size()) > 1:
+            end_positions = end_positions.squeeze(-1)
+        # sometimes the start/end positions are outside our model inputs, we ignore these terms
+        ignored_index = start_logits.size(1)
+        start_positions = start_positions.clamp(0, ignored_index)
+        end_positions = end_positions.clamp(0, ignored_index)
+        # start_positions.clamp_(0, ignored_index)
+        # end_positions.clamp_(0, ignored_index)
+
+        loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
+        start_loss = loss_fct(start_logits, start_positions)
+        end_loss = loss_fct(end_logits, end_positions)
+        total_loss = (start_loss + end_loss) / 2
+        return total_loss
