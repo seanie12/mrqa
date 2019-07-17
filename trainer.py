@@ -300,7 +300,7 @@ class BaseTrainer(object):
             prediction_file = os.path.join(result_dir, "epoch_{}_{}_.json".format(epoch, file_name))
             file_path = os.path.join(self.args.dev_folder, dev_file)
             metrics = eval_qa(self.model, file_path
-                              , prediction_file, device="cuda", args=self.args
+                              , prediction_file, args=self.args
                               , tokenizer=self.tokenizer
                               , batch_size=self.args.batch_size
                               )
