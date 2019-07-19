@@ -336,6 +336,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
             if out_of_span:
                 start_position = 0
                 end_position = 0
+                continue
             else:
                 doc_offset = len(query_tokens) + 2
                 start_position = tok_start_position - doc_start + doc_offset
