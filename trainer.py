@@ -218,23 +218,18 @@ class BaseTrainer(object):
         avg_loss = 0
         global_step = 1
         update_iter = False
-        total_steps = sum([math.ceil(len(f) / self.args.batch_size) for f in self.features_lst]) * self.args.epochs
-        if self.args.curriculum:
-            level = 0.5
-        else:
-            level = 1.0
-        for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
-            iter_lst = self.get_iter(self.features_lst, level, self.args)
+        
+        level = 1.0
+        iter_lst = self.get_iter(self.features_lst, level, self.args)
             num_batches = sum([len(iterator[0]) for iterator in iter_lst])
+        for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
+            
             start = time.time()
             batch_step = 1
             for data_loader, sampler in iter_lst:
                 if self.args.distributed:
                     sampler.set_epoch(epoch)
-
-                if update_iter and self.args.curriculum:
-                    update_iter = False
-                    break
+                
                 for i, batch in enumerate(data_loader, start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions = batch
 
@@ -264,13 +259,7 @@ class BaseTrainer(object):
                                 eta(start, batch_step, num_batches),
                                 avg_loss)
                     print(msg, end="\r")
-                    new_level = max(0.5, min(1.0, global_step / total_steps))
-
-                    if global_step % 2000 == 0 and new_level > 0.5:
-                        update_iter = True
-                        iter_lst = self.get_iter(self.features_lst, new_level, self.args)
-                        num_batches = sum([len(iterator) for iterator in iter_lst])
-                        break
+                   
 
             print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_loss))
             del iter_lst
