@@ -314,33 +314,39 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 input_ids.append(0)
                 input_mask.append(0)
                 segment_ids.append(0)
+            
             # convert to numpy array
             input_ids = np.asarray(input_ids, dtype=np.int32)
             input_mask = np.asarray(input_mask, dtype=np.uint8)
             segment_ids = np.asarray(segment_ids, dtype=np.uint8)
+            
             assert len(input_ids) == max_seq_length
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
             start_position = None
             end_position = None
+            if is_training:
+                # For training, if our document chunk does not contain an annotation
+                # we throw it out, since there is nothing to predict.
+                doc_start = doc_span.start
+                doc_end = doc_span.start + doc_span.length - 1
+                out_of_span = False
+                if not (tok_start_position >= doc_start and
+                        tok_end_position <= doc_end):
+                    out_of_span = True
+                if out_of_span:
+                    continue
 
-            # For training, if our document chunk does not contain an annotation
-            # we throw it out, since there is nothing to predict.
-            doc_start = doc_span.start
-            doc_end = doc_span.start + doc_span.length - 1
-            out_of_span = False
-            if not (tok_start_position >= doc_start and
-                    tok_end_position <= doc_end):
-                out_of_span = True
-            if out_of_span:
-                start_position = 0
-                end_position = 0
-                continue
-            else:
-                doc_offset = len(query_tokens) + 2
-                start_position = tok_start_position - doc_start + doc_offset
-                end_position = tok_end_position - doc_start + doc_offset
+                else:
+                    doc_offset = len(query_tokens) + 2
+                    start_position = tok_start_position - doc_start + doc_offset
+                    end_position = tok_end_position - doc_start + doc_offset
+
+            if is_training:
+                tokens = None
+                token_to_orig_map = None
+                token_is_max_context = None
 
             if example_index < 20 and verbose:
                 logger.info("*** Example ***")
