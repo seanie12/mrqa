@@ -49,12 +49,12 @@ if __name__ == "__main__":
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
 
     parser.add_argument("--train_folder"
-                        #, default="./data/train"
-                        , default="/home/adam/data/mrqa2019/download_train"
+                        , default="./data/train"
+                        #, default="/home/adam/data/mrqa2019/download_train"
                         , type=str, help="path of training data file")
     parser.add_argument("--dev_folder"
-                        #, default="./data/dev"
-                        , default="/home/adam/data/mrqa2019/download_out_of_domain_dev"
+                        , default="./data/dev"
+                        #, default="/home/adam/data/mrqa2019/download_out_of_domain_dev"
                         , type=str, help="path of training data file")
     parser.add_argument("--level_folder"
                         , default="./generator/difficulty"
