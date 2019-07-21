@@ -15,22 +15,20 @@ import argparse
 
 from generator.iterator import *
 
-def save_features(args) :
+
+def save_features(args):
     file, args = args
     print(file)
 
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model)
+    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
 
     data_name = file.split(".")[0]
+    pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
     # Check whether pkl file already exists
     pickle_file_name = data_name + '.pkl'
-    pickle_file_path = os.path.join(args.pickled_folder, pickle_file_name)
+    pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
     if os.path.exists(pickle_file_path):
         pass
-        #with open(pickle_file_path, 'rb') as pkl_f:
-        #    print("Loading {} file as pkl...".format(data_name))
-        #print(file, "done")
-        #return pickle.load(pkl_f)
     else:
         level_name = data_name + ".tsv"
         print("processing {} file".format(data_name))
@@ -48,7 +46,8 @@ def save_features(args) :
             max_seq_length=args.max_seq_length,
             max_query_length=args.max_query_length,
             doc_stride=args.doc_stride,
-            is_training=True
+            is_training=True,
+            skip_no_ans=args.skip_no_ans
         )
         train_features = sort_features_by_level(train_features, desc=False)
 
@@ -58,7 +57,7 @@ def save_features(args) :
             pickle.dump(train_features, pkl_f)
 
         print(file, "done")
-        #return train_features
+        # return train_features
 
 
 def iter_main(args):
@@ -72,11 +71,10 @@ def iter_main(args):
     pool.close()
     pool.join()
 
-    #return features_lst
+    # return features_lst
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="debugging mode")
     parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
