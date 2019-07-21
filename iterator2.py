@@ -64,7 +64,7 @@ def save_features(args) :
 def iter_main(args):
     print("start data pre-load with multiprocessing.")
 
-    files = [(f, args) for f in os.listdir(args.train_folder) if f.endswith(".gz")][-2:]
+    files = [(f, args) for f in os.listdir(args.train_folder) if f.endswith(".gz")]
     print("the number of data-set:{}".format(len(files)))
 
     pool = multiprocessing.Pool(processes=len(files))
