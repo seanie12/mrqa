@@ -2,9 +2,14 @@ import argparse
 from trainer import BaseTrainer, MetaTrainer
 from distributed_run import distributed_main
 import torch
+from iterator2 import *
 
 
 def main(args):
+
+    #data pre-load
+    iter_main(args)
+
     args.devices = [int(gpu) for gpu in args.devices.split('_')]
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
     args.distributed = (args.use_cuda and args.multiprocessing_distributed)
@@ -44,10 +49,12 @@ if __name__ == "__main__":
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
 
     parser.add_argument("--train_folder"
-                        , default="./data/train"
+                        #, default="./data/train"
+                        , default="/home/adam/data/mrqa2019/download_train"
                         , type=str, help="path of training data file")
     parser.add_argument("--dev_folder"
-                        , default="./data/dev"
+                        #, default="./data/dev"
+                        , default="/home/adam/data/mrqa2019/download_out_of_domain_dev"
                         , type=str, help="path of training data file")
     parser.add_argument("--level_folder"
                         , default="./generator/difficulty"
