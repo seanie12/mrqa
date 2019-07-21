@@ -7,7 +7,11 @@ from iterator2 import *
 
 def main(args):
 
-    #data pre-load
+    # data loading before initializing model
+    pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
+
+    if not os.path.exists(pickled_folder):
+        os.mkdir(pickled_folder)
     iter_main(args)
 
     args.devices = [int(gpu) for gpu in args.devices.split('_')]
