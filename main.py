@@ -58,7 +58,7 @@ if __name__ == "__main__":
     parser.add_argument("--load_model"
                         , default=None
                         , type=str, help="load model")
-
+    parser.add_argument("--skip_no_ans", action="store_true", help="whether to exclude no answer example")
     parser.add_argument("--devices",
                         type=str,
                         default='0_1_2_3',

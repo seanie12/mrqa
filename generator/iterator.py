@@ -7,6 +7,7 @@ import json
 from pytorch_pretrained_bert.tokenization import BertTokenizer, BasicTokenizer
 import math
 import numpy as np
+from tqdm import tqdm
 
 
 def get_logger(log_name):
@@ -221,7 +222,8 @@ def read_squad_examples(input_file, debug=False):
 
 
 def convert_examples_to_features(examples, tokenizer, max_seq_length,
-                                 doc_stride, max_query_length, is_training, verbose=False):
+                                 doc_stride, max_query_length, is_training,
+                                 skip_no_ans=False, verbose=False):
     """
     max_seq_length: "The maximum total input sequence length after WordPiece tokenization. Sequences 
                     longer than this will be truncated, and sequences shorter than this will be padded."
@@ -231,7 +233,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
     unique_id = 1000000000
 
     features = []
-    for (example_index, example) in enumerate(examples):
+    for (example_index, example) in tqdm(enumerate(examples), total=len(examples)):
         query_tokens = tokenizer.tokenize(example.question_text)
 
         if len(query_tokens) > max_query_length:
@@ -314,12 +316,12 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 input_ids.append(0)
                 input_mask.append(0)
                 segment_ids.append(0)
-            
+
             # convert to numpy array
             input_ids = np.asarray(input_ids, dtype=np.int32)
             input_mask = np.asarray(input_mask, dtype=np.uint8)
             segment_ids = np.asarray(segment_ids, dtype=np.uint8)
-            
+
             assert len(input_ids) == max_seq_length
             assert len(input_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
@@ -338,7 +340,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 if out_of_span:
                     start_position = 0
                     end_position = 0
-
+                    if skip_no_ans:
+                        continue
                 else:
                     doc_offset = len(query_tokens) + 2
                     start_position = tok_start_position - doc_start + doc_offset

@@ -122,12 +122,14 @@ class BaseTrainer(object):
 
     def get_features(self, train_folder, debug=False):
         level_folder = self.args.level_folder
-        pickled_folder = self.args.pickled_folder
+        pickled_folder = self.args.pickled_folder \
+                         + "_{}_{}".format(self.args.bert_model, str(self.args.skip_no_ans))
 
         if not os.path.exists(pickled_folder):
             os.mkdir(pickled_folder)
 
         features_lst = []
+
         files = [f for f in os.listdir(train_folder) if f.endswith(".gz")]
         print("the number of data-set:{}".format(len(files)))
         for file in files:
@@ -156,7 +158,8 @@ class BaseTrainer(object):
                     max_seq_length=self.args.max_seq_length,
                     max_query_length=self.args.max_query_length,
                     doc_stride=self.args.doc_stride,
-                    is_training=True
+                    is_training=True,
+                    skip_no_ans=self.args.skip_no_ans
                 )
                 train_features = sort_features_by_level(train_features, desc=False)
 
@@ -217,19 +220,17 @@ class BaseTrainer(object):
         step = 1
         avg_loss = 0
         global_step = 1
-        update_iter = False
-        
         level = 1.0
         iter_lst = self.get_iter(self.features_lst, level, self.args)
-            num_batches = sum([len(iterator[0]) for iterator in iter_lst])
+        num_batches = sum([len(iterator[0]) for iterator in iter_lst])
         for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
-            
+
             start = time.time()
             batch_step = 1
             for data_loader, sampler in iter_lst:
                 if self.args.distributed:
                     sampler.set_epoch(epoch)
-                
+
                 for i, batch in enumerate(data_loader, start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions = batch
 
@@ -259,10 +260,8 @@ class BaseTrainer(object):
                                 eta(start, batch_step, num_batches),
                                 avg_loss)
                     print(msg, end="\r")
-                   
 
             print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_loss))
-            del iter_lst
 
             # save model
             if self.args.rank == 0:

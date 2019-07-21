@@ -111,6 +111,7 @@ deprecated/
 sample.json
 data/train
 pickled_data/
+pickled_data_*/
 save/
 debug.py
 *.gz
