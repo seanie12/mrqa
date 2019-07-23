@@ -10,20 +10,20 @@ def main(args):
     # data loading before initializing model
     pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
 
-    if not os.path.exists(pickled_folder):
+    if not os.path.exists(pickled_folder) and not args.debug:
         os.mkdir(pickled_folder)
     iter_main(args)
 
     # make save and result directory
     save_dir = os.path.join("./save",
                             "{}_{}".format("adv" if args.adv else "base", time.strftime("%m%d%H%M")))
-    if not os.path.exists(save_dir):
+    if not os.path.exists(save_dir) and not args.debug:
         os.makedirs(save_dir)
     args.save_dir = save_dir
 
     result_dir = os.path.join("./result",
                               "{}_{}".format("adv" if args.adv else "base", time.strftime("%m%d%H%M")))
-    if not os.path.exists(result_dir):
+    if not os.path.exists(result_dir) and not args.debug:
         os.makedirs(result_dir)
     args.result_dir = result_dir
     args.devices = [int(gpu) for gpu in args.devices.split('_')]
