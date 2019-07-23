@@ -194,7 +194,8 @@ class BaseTrainer(object):
         save_file = os.path.join(self.args.save_dir, "base_model_{}_{:.3f}".format(epoch, loss))
         save_file_config = os.path.join(self.args.save_dir, "base_config_{}_{:.3f}".format(epoch, loss))
 
-        model_to_save = self.model.module if hasattr(self.model, 'module') else self.model  # Only save the model it-self
+        model_to_save = self.model.module if hasattr(self.model,
+                                                     'module') else self.model  # Only save the model it-self
         torch.save(model_to_save.state_dict(), save_file)
         model_to_save.config.to_json_file(save_file_config)
 
@@ -430,10 +431,6 @@ class AdvTrainer(BaseTrainer):
                                 eta(start, batch_step, num_batches),
                                 avg_qa_loss, avg_dis_loss)
                     print(msg, end="\r")
-                    if self.args.do_valid:
-                        result_dict = self.evaluate_model(epoch)
-                        for dev_file, f1 in result_dict.items():
-                            print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
             print("{} epoch: {}, final loss: {:.4f}, final dis loss: {:.4f}"
                   .format(self.args.gpu, epoch, avg_qa_loss, avg_dis_loss))
@@ -442,7 +439,10 @@ class AdvTrainer(BaseTrainer):
             if self.args.rank == 0:
                 self.save_model(epoch, avg_loss)
 
-
+            if self.args.do_valid:
+                result_dict = self.evaluate_model(epoch)
+                for dev_file, f1 in result_dict.items():
+                    print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
