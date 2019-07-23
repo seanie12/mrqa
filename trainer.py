@@ -412,18 +412,16 @@ class AdvTrainer(BaseTrainer):
 
                     # update qa model
                     avg_qa_loss = self.cal_running_avg_loss(qa_loss.item(), avg_qa_loss)
-                    if step % self.args.gradient_accumulation_steps == 0:
-                        self.qa_optimizer.step()
-                        self.qa_optimizer.zero_grad()
+                    self.qa_optimizer.step()
+                    self.qa_optimizer.zero_grad()
 
                     # update discriminator
                     dis_loss = self.model(input_ids, seg_ids, input_mask,
                                           start_positions, end_positions, labels, dtype="dis")
                     dis_loss.backward()
                     avg_dis_loss = self.cal_running_avg_loss(dis_loss.item(), avg_dis_loss)
-                    if step % self.args.gradient_accumulation_steps == 0:
-                        self.dis_optimizer.step()
-                        self.dis_optimizer.zero_grad()
+                    self.dis_optimizer.step()
+                    self.dis_optimizer.zero_grad()
 
                     batch_step += 1
                     msg = "{}/{} {} - ETA : {} - QA loss: {:.4f}, DIS loss: {:.4f}" \
@@ -437,7 +435,7 @@ class AdvTrainer(BaseTrainer):
 
             # save model
             if self.args.rank == 0:
-                self.save_model(epoch, avg_loss)
+                self.save_model(epoch, avg_qa_loss)
 
             if self.args.do_valid:
                 result_dict = self.evaluate_model(epoch)
