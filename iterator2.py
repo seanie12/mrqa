@@ -1,15 +1,6 @@
-import gzip
 import os
-import sys
-import logging
-import collections
-import json
-import json_lines
-from pytorch_pretrained_bert.tokenization import BertTokenizer, BasicTokenizer
-import math
-import numpy as np
+
 import pickle
-from tqdm import tqdm
 import multiprocessing
 import argparse
 
@@ -103,4 +94,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args)
+    iter_main(args)

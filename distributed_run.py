@@ -1,6 +1,6 @@
 import torch
 import torch.multiprocessing as mp
-from trainer import BaseTrainer, MetaTrainer
+from trainer import BaseTrainer, AdvTrainer
 
 
 def distributed_main(args):
@@ -17,9 +17,8 @@ def distributed_main(args):
 
 
 def worker(gpu, ngpus_per_node, args):
-
-    if args.meta:
-        model = MetaTrainer(args)
+    if args.adv:
+        model = AdvTrainer(args)
     else:
         model = BaseTrainer(args)
 

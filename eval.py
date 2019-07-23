@@ -8,9 +8,8 @@ import collections
 import json
 
 
-def eval_qa(model, file_path, prediction_file,  args, tokenizer, batch_size=50):
+def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
     eval_examples = read_squad_examples(file_path, debug=False)
-    # tokenizer = BertTokenizer.from_pretrained(args.bert_model)
 
     # In test time, there is no level file and it is not necessary for inference
     for example in eval_examples:
@@ -51,10 +50,7 @@ def eval_qa(model, file_path, prediction_file,  args, tokenizer, batch_size=50):
         seg_ids = seg_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
 
         with torch.no_grad():
-            if args.meta:
-                batch_start_logits, batch_end_logits = model.predict(input_ids, seg_ids, input_mask)
-            else:
-                batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
+            batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
             batch_size = batch_start_logits.size(0)
         for i in range(batch_size):
             example_index += 1

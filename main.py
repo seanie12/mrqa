@@ -1,12 +1,12 @@
-import argparse
-from trainer import BaseTrainer, MetaTrainer
+from trainer import BaseTrainer
 from distributed_run import distributed_main
 import torch
 from iterator2 import *
+import os
+import time
 
 
 def main(args):
-
     # data loading before initializing model
     pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
 
@@ -14,6 +14,18 @@ def main(args):
         os.mkdir(pickled_folder)
     iter_main(args)
 
+    # make save and result directory
+    save_dir = os.path.join("./save",
+                            "{}_{}".format("adv" if args.adv else "base", time.strftime("%m%d%H%M")))
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    args.save_dir = save_dir
+
+    result_dir = os.path.join("./result",
+                              "{}_{}".format("adv" if args.adv else "base", time.strftime("%m%d%H%M")))
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    args.result_dir = result_dir
     args.devices = [int(gpu) for gpu in args.devices.split('_')]
     args.use_cuda = args.use_cuda and torch.cuda.is_available()
     args.distributed = (args.use_cuda and args.multiprocessing_distributed)
@@ -21,10 +33,7 @@ def main(args):
     if args.distributed:
         distributed_main(args)
     else:
-        if args.meta:
-            trainer = MetaTrainer(args)
-        else:
-            trainer = BaseTrainer(args)
+        trainer = BaseTrainer(args)
         trainer.train()
 
 
@@ -54,11 +63,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--train_folder"
                         , default="./data/train"
-                        #, default="/home/adam/data/mrqa2019/download_train"
+                        # , default="/home/adam/data/mrqa2019/download_train"
                         , type=str, help="path of training data file")
     parser.add_argument("--dev_folder"
                         , default="./data/dev"
-                        #, default="/home/adam/data/mrqa2019/download_out_of_domain_dev"
+                        # , default="/home/adam/data/mrqa2019/download_out_of_domain_dev"
                         , type=str, help="path of training data file")
     parser.add_argument("--level_folder"
                         , default="./generator/difficulty"
@@ -91,7 +100,13 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_by_all_devices", default=False, help="Save best model in all devices or not")
     parser.add_argument("--make_sample_prediction", default=False, help="Make sample prediction during training or not")
     parser.add_argument("--random_seed", default=2019, help="random state (seed)")
-
+    # for adversarial learning
+    parser.add_argument("--adv", action="store_true", help="adversarial training")
+    parser.add_argument("--dis_lambda", type=float,  default=0.1, help="importance of adversarial loss")
+    parser.add_argument("--num_classes", type=int, default=6, help="num_classes for discriminator")
+    parser.add_argument("--hidden_size", type=int, default=768, help="hidden size for discriminator")
+    parser.add_argument("--num_layers", type=int, default=3, help="number of layers for discriminator")
+    parser.add_argument("--dropout", type=float, default=0.1, help="dropout for discriminator")
     args = parser.parse_args()
 
     main(args)

@@ -1,253 +1,80 @@
-import math
-
 import torch
 import torch.nn as nn
-from pytorch_pretrained_bert import BertModel, BertConfig
 import torch.nn.functional as F
-import torch.autograd as autograd
+from pytorch_pretrained_bert import BertModel, BertConfig
 
 
-class FeatureExtractor(nn.Module):
-    def __init__(self, bert_model="bert-base-uncased", bert_config=None, pretrained=True):
-        super(FeatureExtractor, self).__init__()
-        if pretrained:
-            self.bert = BertModel.from_pretrained(bert_model)
+class DomainDiscriminator(nn.Module):
+    def __init__(self, num_classes=6, hidden_size=768, num_layers=3, dropout=0.1):
+        super(DomainDiscriminator, self).__init__()
+        self.num_layers = num_layers
+        hidden_layers = []
+        for _ in range(num_layers):
+            hidden_layers.append(nn.Sequential(
+                nn.Linear(hidden_size, hidden_size)
+                , nn.Dropout(dropout)
+            ))
+        hidden_layers.append(nn.Linear(hidden_size, num_classes))
+        self.hidden_layers = nn.ModuleList(hidden_layers)
+
+    def forward(self, x):
+        for i in range(self.num_layers-1):
+            x = F.relu(self.hidden_layers[i](x))
+        logits = self.hidden_layers[-1](x)
+        log_prob = F.log_softmax(logits, dim=1)
+        return log_prob
+
+
+class DomainQA(nn.Module):
+    def __init__(self, bert_name_or_config, num_classes=6, hidden_size=768,
+                 num_layers=3, dropout=0.1, dis_lambda=0.5):
+        super(DomainQA, self).__init__()
+        if isinstance(bert_name_or_config, BertConfig):
+            self.bert = BertModel(bert_name_or_config)
         else:
-            assert bert_config is not None, print("bert config file should be given")
-            config = BertConfig(bert_config)
-            self.bert = BertModel(config)
+            self.bert = BertModel.from_pretrained("bert-base-uncased")
+        self.qa_outputs = nn.Linear(hidden_size, 2)
+        # init weight
+        self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
+        self.qa_outputs.bias.data.zero_()
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
-        sequence_output, _ = self.bert(input_ids,
-                                       token_type_ids,
-                                       attention_mask,
-                                       output_all_encoded_layers=False)
-        return sequence_output
+        self.discriminator = DomainDiscriminator(num_classes, hidden_size, num_layers, dropout)
+        self.num_classes = num_classes
+        self.dis_lambda = dis_lambda
 
+    # only for prediction
+    def forward(self, input_ids, token_type_ids, attention_mask,
+                start_positions=None, end_positions=None, labels=None, dtype=None):
+        if dtype == "qa":
+            qa_loss = self.forward_qa(input_ids, token_type_ids, attention_mask, start_positions, end_positions)
+            return qa_loss
 
-class Classifier(nn.Module):
-    def __init__(self, hidden_size):
-        super(Classifier, self).__init__()
-        self.linear = nn.Linear(hidden_size, 2)
+        elif dtype == "dis":
+            assert labels is not None
+            dis_loss = self.forward_discriminator(input_ids, token_type_ids, attention_mask, labels)
+            return dis_loss
 
-    def forward(self, features, start_positions=None, end_positions=None):
-        # features : [b,t,d]
-        logits = self.linear(features)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
-        if start_positions is not None and end_positions is not None:
-            # If we are on multi-GPU, split add a dimension
-            if len(start_positions.size()) > 1:
-                start_positions = start_positions.squeeze(-1)
-            if len(end_positions.size()) > 1:
-                end_positions = end_positions.squeeze(-1)
-            # sometimes the start/end positions are outside our model inputs, we ignore these terms
-            ignored_index = start_logits.size(1)
-            start_positions = start_positions.clamp(0, ignored_index)
-            end_positions = end_positions.clamp(0, ignored_index)
-            # start_positions.clamp_(0, ignored_index)
-            # end_positions.clamp_(0, ignored_index)
-
-            loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
-            start_loss = loss_fct(start_logits, start_positions)
-            end_loss = loss_fct(end_logits, end_positions)
-            total_loss = (start_loss + end_loss) / 2
-            return total_loss
         else:
+            sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+            logits = self.qa_outputs(sequence_output)
+            start_logits, end_logits = logits.split(1, dim=-1)
+            start_logits = start_logits.squeeze(-1)
+            end_logits = end_logits.squeeze(-1)
+
             return start_logits, end_logits
 
+    def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions):
+        sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
-class Critic(nn.Module):
-    def __init__(self, hidden_size):
-        super(Critic, self).__init__()
-        self.fc1 = nn.Linear(hidden_size, hidden_size // 2)
-        self.fc2 = nn.Linear(hidden_size // 2, 1)
+        hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+        log_prob = self.discriminator(hidden)
+        targets = torch.ones_like(log_prob) * (1 / self.num_classes)
+        # As with NLLLoss, the input given is expected to contain log-probabilities
+        # and is not restricted to a 2D Tensor. The targets are given as probabilities
+        kl_criterion = nn.KLDivLoss(reduction="batchmean")
+        kld = self.dis_lambda * kl_criterion(log_prob, targets)
 
-    @staticmethod
-    def gelu(x):
-        """Implementation of the gelu activation function.
-            For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
-            0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
-            Also see https://arxiv.org/abs/1606.08415
-        """
-        return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
-
-    def forward(self, feature):
-        # feature : [b,t,d]
-        # extract [CLS]
-        pooled = feature[:, 0]
-        # output should be scalar and non-negative value
-        hidden = self.gelu(self.fc1(pooled))
-        hidden = F.softplus(self.fc2(hidden))
-        score = torch.mean(hidden)
-
-        return score
-
-
-class DGLearner(nn.Module):
-    def __init__(self, bert_config, init_temp=True):
-        super(DGLearner, self).__init__()
-        self.feat_ext = FeatureExtractor()
-        self.classifier = Classifier(hidden_size=768)
-        if init_temp:
-            self.temp_old_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
-                                                                       pretrained=False)
-            self.temp_new_feature_extractor_network = FeatureExtractor(bert_config=bert_config,
-                                                                       pretrained=False)
-        self.critic = Critic(hidden_size=768)
-
-    def forward(self, train_batch, test_batch, lr, theta_opt, phi_opt):
-        input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
-        features = self.feat_ext(input_ids, seg_ids, input_mask)
-        loss_main = self.classifier(features, start_positions, end_positions)
-        theta_opt.zero_grad()
-        phi_opt.zero_grad()
-        loss_main.backward(retain_graph=True)
-
-        loss_dg = self.critic(features)
-        grad_theta = [theta_i.grad for theta_i in self.feat_ext.parameters()]
-        theta_updated_old = dict()
-
-        num_grad = 0
-        for i, (k, v) in enumerate(self.feat_ext.state_dict().items()):
-            if grad_theta[num_grad] is None:
-                num_grad += 1
-                theta_updated_old[k] = v
-            else:
-                theta_updated_old[k] = v - lr * grad_theta[num_grad]
-                num_grad += 1
-        loss_dg.backward(create_graph=True)
-
-        grad_theta = [theta_i.grad for theta_i in self.feat_ext.parameters()]
-        theta_updated_new = {}
-        num_grad = 0
-        for i, (k, v) in enumerate(self.feat_ext.state_dict().items()):
-
-            if grad_theta[num_grad] is None:
-                num_grad += 1
-                theta_updated_new[k] = v
-            else:
-                theta_updated_new[k] = v - lr * grad_theta[num_grad]
-                num_grad += 1
-
-        self.fix_nn(self.temp_new_feature_extractor_network, theta_updated_new)
-        self.temp_new_feature_extractor_network.train()
-
-        self.temp_old_feature_extractor_network.load_state_dict(theta_updated_old)
-        self.temp_old_feature_extractor_network.train()
-        input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
-        with torch.no_grad():
-            old_features = self.temp_old_feature_extractor_network(input_ids, seg_ids, input_mask)
-        old_features = old_features.detach()
-
-        new_features = self.temp_new_feature_extractor_network(input_ids, seg_ids, input_mask)
-
-        loss_main_old = self.classifier(old_features, start_positions, end_positions)
-        loss_main_new = self.classifier(new_features, start_positions, end_positions)
-
-        reward = loss_main_old - loss_main_new
-        utility = torch.tanh(reward)
-        loss_held_out = - utility.sum()
-
-        return loss_held_out
-
-    @staticmethod
-    def fix_nn(model, theta):
-        def k_param_fn(tmp_model, name=None):
-            if len(tmp_model._modules) != 0:
-                for (k, v) in tmp_model._modules.items():
-                    if name is None:
-                        k_param_fn(v, name=str(k))
-                    else:
-                        k_param_fn(v, name=str(name + '.' + k))
-            else:
-                for (k, v) in tmp_model._parameters.items():
-                    if not isinstance(v, torch.Tensor):
-                        continue
-                    tmp_model._parameters[k] = theta[str(name + '.' + k)]
-
-        k_param_fn(model)
-        return model
-
-    def predict(self, input_ids, input_mask, seg_ids):
-        features = self.feat_ext(input_ids, seg_ids, input_mask)
-        start_logits, end_logits = self.classifier(features)
-
-        return start_logits, end_logits
-
-
-class MetaLearner(nn.Module):
-    def __init__(self, bert_config, meta_lambda):
-        super(MetaLearner, self).__init__()
-        self.meta_lambda = meta_lambda
-        config = BertConfig(bert_config)
-        self.bert = BertModel(config)
-        self.fc1 = nn.Linear(768, 768)
-
-        self.fc2 = nn.Linear(768, 2)
-        # freeze bert
-        for param in self.bert.parameters():
-            param.requires_grad = False
-
-    def forward(self, train_batch, test_batch, lr):
-        with torch.no_grad():
-            input_ids, input_mask, seg_ids, start_positions, end_positions = train_batch
-            features, _ = self.bert(input_ids,
-                                    seg_ids,
-                                    input_mask,
-                                    output_all_encoded_layers=False)
-
-        hidden = self.gelu(self.fc1(features))
-        logits = self.fc2(hidden)
-        meta_train_loss = self.get_loss(logits, start_positions, end_positions)
-
-        with torch.no_grad():
-            input_ids, input_mask, seg_ids, start_positions, end_positions = test_batch
-            features = self.bert(input_ids, seg_ids, input_mask, output_all_encoded_layers=False)
-
-        grad_weight = autograd.grad(meta_train_loss, self.fc1.weight, create_graph=True)[0]
-        adapt_weight = self.fc1.weight - lr * grad_weight
-
-        grad_bias = autograd.grad(meta_train_loss, self.fc1.bias, create_graph=True)[0]
-        adapt_bias = self.fc1.bias - lr * grad_bias
-
-        hidden = F.linear(features, adapt_weight, adapt_bias)
-        hidden = self.gelu(hidden)
-
-        grad_weight = autograd.grad(meta_train_loss, self.fc2.weight, create_graph=True)[0]
-        adapt_weight = self.fc2.weight - lr * grad_weight
-
-        grad_bias = autograd.grad(meta_train_loss, self.fc2.bias, create_graph=True)[0]
-        adapt_bias = self.fc2.bias - lr * grad_bias
-
-        logits = F.linear(hidden, adapt_weight, adapt_bias)
-        meta_test_loss = self.get_loss(logits, start_positions, end_positions)
-
-        total_loss = meta_train_loss + self.meta_lambda * meta_test_loss
-        return total_loss
-
-    def predict(self, input_ids, input_mask, seg_ids):
-        features = self.bert(input_ids, seg_ids, input_mask)
-        hidden = self.gelu(self.fc1(features))
-        logits = self.fc2(hidden)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
-
-        return start_logits, end_logits
-
-    @staticmethod
-    def gelu(x):
-        """Implementation of the gelu activation function.
-            For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
-            0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
-            Also see https://arxiv.org/abs/1606.08415
-        """
-        return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
-
-    @staticmethod
-    def get_loss(logits, start_positions, end_positions):
+        logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
@@ -259,13 +86,22 @@ class MetaLearner(nn.Module):
             end_positions = end_positions.squeeze(-1)
         # sometimes the start/end positions are outside our model inputs, we ignore these terms
         ignored_index = start_logits.size(1)
-        start_positions = start_positions.clamp(0, ignored_index)
-        end_positions = end_positions.clamp(0, ignored_index)
-        # start_positions.clamp_(0, ignored_index)
-        # end_positions.clamp_(0, ignored_index)
+        start_positions.clamp_(0, ignored_index)
+        end_positions.clamp_(0, ignored_index)
 
         loss_fct = nn.CrossEntropyLoss(ignore_index=ignored_index)
         start_loss = loss_fct(start_logits, start_positions)
         end_loss = loss_fct(end_logits, end_positions)
-        total_loss = (start_loss + end_loss) / 2
+        qa_loss = (start_loss + end_loss) / 2
+        total_loss = qa_loss + kld
         return total_loss
+
+    def forward_discriminator(self, input_ids, token_type_ids, attention_mask, labels):
+        with torch.no_grad():
+            sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+            hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+        log_prob = self.discriminator(hidden.detach())
+        criterion = nn.NLLLoss()
+        loss = criterion(log_prob, labels)
+
+        return loss
