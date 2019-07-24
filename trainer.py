@@ -308,7 +308,8 @@ class AdvTrainer(BaseTrainer):
 
         self.model = DomainQA(self.args.bert_model, self.args.num_classes,
                               self.args.hidden_size, self.args.num_layers,
-                              self.args.dropout, self.args.dis_lambda)
+                              self.args.num_filters, self.args.window_sizes,
+                              self.args.dropout, self.args.dis_lambda, self.args.use_conv)
         if self.args.load_model is not None:
             print("loading model from ", self.args.load_model)
             self.model.load_state_dict(torch.load(self.args.load_model))
@@ -444,7 +445,7 @@ class AdvTrainer(BaseTrainer):
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
-        save_file = os.path.join(self.args.save_dir, "meta_{}_{}".format(epoch, loss))
+        save_file = os.path.join(self.args.save_dir, "adv_{}_{}".format(epoch, loss))
         if hasattr(self.model, "module"):
             model_to_save = self.model.module
         else:

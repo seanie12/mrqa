@@ -101,6 +101,9 @@ if __name__ == "__main__":
     parser.add_argument("--make_sample_prediction", default=False, help="Make sample prediction during training or not")
     parser.add_argument("--random_seed", default=2019, help="random state (seed)")
     # for adversarial learning
+    parser.add_argument("--use_conv", action="store_true", help="whether to use conv discriminator")
+    parser.add_argument("--num_filters", type=int, default=128, help="the number of filter ")
+    parser.add_argument("--window_sizes", type=list, default=[3,4,5], help="window size for conv")
     parser.add_argument("--adv", action="store_true", help="adversarial training")
     parser.add_argument("--dis_lambda", type=float,  default=0.1, help="importance of adversarial loss")
     parser.add_argument("--num_classes", type=int, default=6, help="num_classes for discriminator")
