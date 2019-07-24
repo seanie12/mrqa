@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_pretrained_bert import BertModel, BertConfig
-
+from utils import coef_anneal
 
 class ConvDiscriminaotr(nn.Module):
     def __init__(self, hidden_size=768, num_filters=128,
@@ -98,7 +98,7 @@ class DomainQA(nn.Module):
 
             return start_logits, end_logits
 
-    def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions):
+    def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions. golbal_step):
         sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
         if self.use_conv:
@@ -110,7 +110,8 @@ class DomainQA(nn.Module):
         # As with NLLLoss, the input given is expected to contain log-probabilities
         # and is not restricted to a 2D Tensor. The targets are given as probabilities
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        kld = self.dis_lambda * kl_criterion(log_prob, targets)
+        annealed_lambda = self.dis_lambda * self.coef_anneal(global_step) 
+        kld = annealed_lambda * kl_criterion(log_prob, targets)
 
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)

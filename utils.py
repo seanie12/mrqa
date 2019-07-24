@@ -1,4 +1,5 @@
 import time
+import math
 
 
 def time_since(t):
@@ -58,3 +59,8 @@ def eta(start, completed, total):
     remaining_time = time_per_step * remaining_steps
 
     return user_friendly_time(remaining_time)
+
+
+def coef_anneal(i):
+    return (math.tanh((i - 3500) / 1000) + 1) / 2
+
