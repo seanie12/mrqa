@@ -98,7 +98,7 @@ class DomainQA(nn.Module):
 
             return start_logits, end_logits
 
-    def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions, golbal_step):
+    def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions, global_step):
         sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
         if self.use_conv:
