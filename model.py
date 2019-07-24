@@ -79,9 +79,11 @@ class DomainQA(nn.Module):
 
     # only for prediction
     def forward(self, input_ids, token_type_ids, attention_mask,
-                start_positions=None, end_positions=None, labels=None, dtype=None):
+                start_positions=None, end_positions=None, labels=None,
+                dtype=None, global_step=None):
         if dtype == "qa":
-            qa_loss = self.forward_qa(input_ids, token_type_ids, attention_mask, start_positions, end_positions)
+            qa_loss = self.forward_qa(input_ids, token_type_ids, attention_mask,
+                                      start_positions, end_positions, global_step)
             return qa_loss
 
         elif dtype == "dis":
@@ -110,7 +112,7 @@ class DomainQA(nn.Module):
         # As with NLLLoss, the input given is expected to contain log-probabilities
         # and is not restricted to a 2D Tensor. The targets are given as probabilities
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        annealed_lambda = self.dis_lambda * self.coef_anneal(global_step) 
+        annealed_lambda = self.dis_lambda * coef_anneal(global_step)
         kld = annealed_lambda * kl_criterion(log_prob, targets)
 
         logits = self.qa_outputs(sequence_output)

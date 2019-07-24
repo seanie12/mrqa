@@ -382,7 +382,7 @@ class AdvTrainer(BaseTrainer):
         return dataloader, train_sampler
 
     def train(self):
-        step = 1
+        global_step = 1
         avg_qa_loss = 0
         avg_dis_loss = 0
         iter_lst = [self.get_iter(self.features_lst, 1.0, self.args)]
@@ -408,7 +408,8 @@ class AdvTrainer(BaseTrainer):
                     end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
 
                     qa_loss = self.model(input_ids, seg_ids, input_mask,
-                                         start_positions, end_positions, labels, dtype="qa")
+                                         start_positions, end_positions, labels,
+                                         dtype="qa", global_step=global_step)
                     qa_loss.backward()
 
                     # update qa model
@@ -425,6 +426,7 @@ class AdvTrainer(BaseTrainer):
                     self.dis_optimizer.zero_grad()
 
                     batch_step += 1
+                    global_step += 1
                     msg = "{}/{} {} - ETA : {} - QA loss: {:.4f}, DIS loss: {:.4f}" \
                         .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
                                 eta(start, batch_step, num_batches),
