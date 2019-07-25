@@ -62,5 +62,7 @@ def eta(start, completed, total):
 
 
 def coef_anneal(i):
+    # reaches 1 at i = 22000
+    # https://github.com/kefirski/pytorch_RVAE/blob/master/utils/functional.py
     return (math.tanh((i - 3500) / 1000) + 1) / 2
 

@@ -58,12 +58,12 @@ class DomainDiscriminator(nn.Module):
 class DomainQA(nn.Module):
     def __init__(self, bert_name_or_config, num_classes=6, hidden_size=768,
                  num_layers=3, num_filters=128, window_sizes=[3, 4, 5],
-                 dropout=0.1, dis_lambda=0.5, use_conv=False):
+                 dropout=0.1, dis_lambda=0.5, use_conv=False, anneal=False):
         super(DomainQA, self).__init__()
         if isinstance(bert_name_or_config, BertConfig):
             self.bert = BertModel(bert_name_or_config)
         else:
-            self.bert = BertModel.from_pretrained("bert-base-uncased")
+            self.bert = BertModel.from_pretrained(bert_name_or_config)
         self.qa_outputs = nn.Linear(hidden_size, 2)
         # init weight
         self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
@@ -76,6 +76,7 @@ class DomainQA(nn.Module):
         self.num_classes = num_classes
         self.dis_lambda = dis_lambda
         self.use_conv = use_conv
+        self.anneal = anneal
 
     # only for prediction
     def forward(self, input_ids, token_type_ids, attention_mask,
@@ -112,7 +113,11 @@ class DomainQA(nn.Module):
         # As with NLLLoss, the input given is expected to contain log-probabilities
         # and is not restricted to a 2D Tensor. The targets are given as probabilities
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
-        annealed_lambda = self.dis_lambda * coef_anneal(global_step)
+        if self.anneal:
+            annealed_lambda = self.dis_lambda * coef_anneal(global_step)
+        else:
+            annealed_lambda = self.dis_lambda
+
         kld = annealed_lambda * kl_criterion(log_prob, targets)
 
         logits = self.qa_outputs(sequence_output)

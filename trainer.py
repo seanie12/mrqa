@@ -309,7 +309,8 @@ class AdvTrainer(BaseTrainer):
         self.model = DomainQA(self.args.bert_model, self.args.num_classes,
                               self.args.hidden_size, self.args.num_layers,
                               self.args.num_filters, self.args.window_sizes,
-                              self.args.dropout, self.args.dis_lambda, self.args.use_conv)
+                              self.args.dropout, self.args.dis_lambda,
+                              self.args.use_conv, self.args.anneal)
         if self.args.load_model is not None:
             print("loading model from ", self.args.load_model)
             self.model.load_state_dict(torch.load(self.args.load_model))
