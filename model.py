@@ -2,36 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from pytorch_pretrained_bert import BertModel, BertConfig
-from utils import coef_anneal
-
-class ConvDiscriminaotr(nn.Module):
-    def __init__(self, hidden_size=768, num_filters=128,
-                 dropout=0.5, window_sizes=[3, 4, 5], num_classes=6):
-        super(ConvDiscriminaotr, self).__init__()
-        self.convs = nn.ModuleList([
-            nn.Conv2d(1, num_filters, [window_size, hidden_size], padding=(window_size - 1, 0))
-            for window_size in window_sizes
-        ])
-        self.dropout = nn.Dropout(dropout)
-        self.logits_layer = nn.Linear(len(window_sizes) * num_filters, num_classes)
-
-    def forward(self, x):
-        batch_size, nsteps, _ = x.size()
-        conv_features = []
-        x = x.unsqueeze(1)  # [b,1,t,d]
-
-        for conv in self.convs:
-            feature = F.relu(conv(x))  # [b, num_filters, t, 1]
-            feature = feature.squeeze(-1)  # [b, num_filters, t]
-            pooled_feature = F.max_pool1d(feature, feature.size(2))  # max-pooling over time dimension
-            conv_features.append(pooled_feature)
-
-        conv_features = torch.cat(conv_features, dim=-1)
-        flatten_features = conv_features.view(batch_size, -1)
-        flatten_features = self.dropout(flatten_features)
-        logits = self.logits_layer(flatten_features)
-        log_prob = F.log_softmax(logits, dim=-1)
-        return log_prob
+from utils import kl_coef
 
 
 class DomainDiscriminator(nn.Module):
@@ -48,6 +19,7 @@ class DomainDiscriminator(nn.Module):
         self.hidden_layers = nn.ModuleList(hidden_layers)
 
     def forward(self, x):
+        # forward pass
         for i in range(self.num_layers - 1):
             x = F.relu(self.hidden_layers[i](x))
         logits = self.hidden_layers[-1](x)
@@ -57,31 +29,47 @@ class DomainDiscriminator(nn.Module):
 
 class DomainQA(nn.Module):
     def __init__(self, bert_name_or_config, num_classes=6, hidden_size=768,
-                 num_layers=3, num_filters=128, window_sizes=[3, 4, 5],
-                 dropout=0.1, dis_lambda=0.5, use_conv=False, anneal=False):
+                 num_layers=3, dropout=0.1, dis_lambda=0.5, anneal=False,
+                 qa_path=None, dis_path=None):
         super(DomainQA, self).__init__()
         if isinstance(bert_name_or_config, BertConfig):
             self.bert = BertModel(bert_name_or_config)
-        else:
-            self.bert = BertModel.from_pretrained(bert_name_or_config)
+        else: 
+            self.bert = BertModel.from_pretrained("bert-base-uncased")
+
         self.qa_outputs = nn.Linear(hidden_size, 2)
         # init weight
         self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
         self.qa_outputs.bias.data.zero_()
+        self.discriminator = DomainDiscriminator(num_classes, hidden_size, num_layers, dropout)
 
-        if use_conv:
-            self.discriminator = ConvDiscriminaotr(hidden_size, num_filters, dropout, window_sizes, num_classes)
-        else:
-            self.discriminator = DomainDiscriminator(num_classes, hidden_size, num_layers, dropout)
+        if qa_path is not None:
+            print("load qa model")
+            state_dict = torch.load(qa_path, map_location="cpu")
+            new_dict = dict()
+            linear_dict = dict()
+            for k, v in state_dict.items():
+                if "bert" in k:
+                    new_k = ".".join(k.split(".")[1:])
+                    new_dict[new_k] = v
+                if "qa_outputs" in k:
+                    new_k = ".".join(k.split(".")[1:])
+                    linear_dict[new_k] = v
+            self.bert.load_state_dict(new_dict)
+            self.qa_outputs.load_state_dict(linear_dict)
+
+        if dis_path is not None:
+            print("load discriminator")
+            state_dict = torch.load(dis_path, map_location="cpu")
+            self.discriminator.load_state_dict(state_dict)
         self.num_classes = num_classes
         self.dis_lambda = dis_lambda
-        self.use_conv = use_conv
         self.anneal = anneal
 
     # only for prediction
     def forward(self, input_ids, token_type_ids, attention_mask,
                 start_positions=None, end_positions=None, labels=None,
-                dtype=None, global_step=None):
+                dtype=None, global_step=22000):
         if dtype == "qa":
             qa_loss = self.forward_qa(input_ids, token_type_ids, attention_mask,
                                       start_positions, end_positions, global_step)
@@ -104,21 +92,15 @@ class DomainQA(nn.Module):
     def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions, global_step):
         sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
 
-        if self.use_conv:
-            hidden = sequence_output
-        else:
-            hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+        hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
         log_prob = self.discriminator(hidden)
         targets = torch.ones_like(log_prob) * (1 / self.num_classes)
         # As with NLLLoss, the input given is expected to contain log-probabilities
         # and is not restricted to a 2D Tensor. The targets are given as probabilities
         kl_criterion = nn.KLDivLoss(reduction="batchmean")
         if self.anneal:
-            annealed_lambda = self.dis_lambda * coef_anneal(global_step)
-        else:
-            annealed_lambda = self.dis_lambda
-
-        kld = annealed_lambda * kl_criterion(log_prob, targets)
+            self.dis_lambda = self.dis_lambda * kl_coef(global_step)
+        kld = self.dis_lambda * kl_criterion(log_prob, targets)
 
         logits = self.qa_outputs(sequence_output)
         start_logits, end_logits = logits.split(1, dim=-1)
@@ -145,10 +127,7 @@ class DomainQA(nn.Module):
     def forward_discriminator(self, input_ids, token_type_ids, attention_mask, labels):
         with torch.no_grad():
             sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-            if self.use_conv:
-                hidden = sequence_output  # [b,t,d]
-            else:
-                hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+            hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
         log_prob = self.discriminator(hidden.detach())
         criterion = nn.NLLLoss()
         loss = criterion(log_prob, labels)
