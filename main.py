@@ -1,4 +1,4 @@
-from trainer import BaseTrainer
+from trainer import BaseTrainer, AdvTrainer, PreTrainer
 from distributed_run import distributed_main
 import torch
 from iterator2 import *
@@ -33,8 +33,16 @@ def main(args):
     if args.distributed:
         distributed_main(args)
     else:
-        trainer = BaseTrainer(args)
-        trainer.train()
+        if args.adv:
+            model = AdvTrainer(args)
+        elif args.pretraining:
+            model = PreTrainer(args)
+        else:
+            model = BaseTrainer(args)
+
+        model.make_model_env(None, 4)
+        model.make_run_env()
+        model.train()
 
 
 if __name__ == "__main__":
@@ -46,7 +54,7 @@ if __name__ == "__main__":
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
     parser.add_argument("--doc_stride", default=128, type=int)
-    parser.add_argument("--batch_size", default=512, type=int, help="batch size")
+    parser.add_argument("--batch_size", default=68, type=int, help="batch size")
     parser.add_argument("--epochs", default=2, type=int, help="number of epochs")
     parser.add_argument("--start_epoch", default=0, type=int, help="starting epoch point")
     parser.add_argument("--lr", default=3e-5, type=float)
@@ -96,21 +104,21 @@ if __name__ == "__main__":
     parser.add_argument("--dist_url", default="tcp://127.0.0.1:9999", help="DistributedDataParallel server")
     parser.add_argument("--gpu", default=None,
                         help="Manual setting of gpu device. If it is not None, all parallel processes are disabled")
-    parser.add_argument("--multiprocessing_distributed", default=True, help="Use multiprocess distribution or not")
+    parser.add_argument("--multiprocessing_distributed", default=False, help="Use multiprocess distribution or not")
     parser.add_argument("--save_model_by_all_devices", default=False, help="Save best model in all devices or not")
     parser.add_argument("--make_sample_prediction", default=False, help="Make sample prediction during training or not")
     parser.add_argument("--random_seed", default=2019, help="random state (seed)")
     # for adversarial learning
-    parser.add_argument("--use_conv", action="store_true", help="whether to use conv discriminator")
-    parser.add_argument("--num_filters", type=int, default=128, help="the number of filter ")
-    parser.add_argument("--window_sizes", type=list, default=[3,4,5], help="window size for conv")
     parser.add_argument("--adv", action="store_true", help="adversarial training")
-    parser.add_argument("--dis_lambda", type=float,  default=0.1, help="importance of adversarial loss")
+    parser.add_argument("--pretraining", action="store_true", help="pretraining discriminator")
+    parser.add_argument("--dis_lambda", type=float, default=0.01, help="importance of adversarial loss")
     parser.add_argument("--num_classes", type=int, default=6, help="num_classes for discriminator")
     parser.add_argument("--hidden_size", type=int, default=768, help="hidden size for discriminator")
     parser.add_argument("--num_layers", type=int, default=3, help="number of layers for discriminator")
     parser.add_argument("--dropout", type=float, default=0.1, help="dropout for discriminator")
-    parser.add_argument("--anneal", action="store_true", help="annealing dis_lambda")
+    parser.add_argument("--anneal", action="store_true")
+    parser.add_argument("--qa_path", type=str, default="./save/qa/base_model", help="pre-trained model path")
+    parser.add_argument("--dis_path", type=str, default="./save/dis/dis_best")
     args = parser.parse_args()
 
     main(args)
