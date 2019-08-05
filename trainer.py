@@ -324,7 +324,7 @@ class BaseTrainer(object):
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
 
-    def set_random_seed(random_seed):
+    def set_random_seed(self, random_seed):
         if random_seed is not None:
             os.environ['PYTHONHASHSEED'] = str(random_seed)
             random.seed(random_seed)
