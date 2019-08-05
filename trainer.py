@@ -204,10 +204,7 @@ class BaseTrainer(object):
                                    all_start_positions, all_end_positions, all_labels)
         if args.distributed:
             train_sampler = DistributedSampler(train_data)
-            dataloader = DataLoader(train_data
-                                    #, num_workers=args.workers
-                                    , num_workers=0
-                                    , pin_memory=True,
+            dataloader = DataLoader(train_data, num_workers=args.workers, pin_memory=True,
                                     sampler=train_sampler, batch_size=args.batch_size)
         else:
             # train_sampler = RandomSampler(train_data)
@@ -219,8 +216,7 @@ class BaseTrainer(object):
 
             dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
                                                      sampler=train_sampler
-                                                     #, num_workers=args.workers
-                                                     , num_workers=0
+                                                     , num_workers=args.workers
                                                      , worker_init_fn=self.set_random_seed(self.args.random_seed)
                                                      , pin_memory=True, drop_last=True)
 
@@ -328,17 +324,14 @@ class BaseTrainer(object):
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
 
-    # def set_random_seed(self, random_seed=2019):
-    #     torch.manual_seed(random_seed)
-    #     torch.cuda.manual_seed(random_seed)
-    #     np.random.seed(random_seed)
-
-    def set_random_seed(self, random_seed):
+    def set_random_seed(random_seed):
         if random_seed is not None:
+            os.environ['PYTHONHASHSEED'] = str(random_seed)
             random.seed(random_seed)
             np.random.seed(random_seed)
             torch.manual_seed(random_seed)
             torch.cuda.manual_seed_all(random_seed)
+            torch.set_num_threads(1)
             cudnn.benchmark = False
             cudnn.deterministic = True
             warnings.warn('You have chosen to seed training. '
