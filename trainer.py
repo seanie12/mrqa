@@ -1,21 +1,22 @@
 import math
 import os
 import pickle
+import random
 import time
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
+import torch.nn as nn
 from pytorch_pretrained_bert import BertForQuestionAnswering
 from pytorch_pretrained_bert import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
 from torch.nn import DataParallel
-import torch.nn as nn
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
-
+import warnings
 from eval import eval_qa
 from generator.iterator import read_squad_examples, \
     read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
@@ -172,8 +173,7 @@ class BaseTrainer(object):
 
         return features_lst
 
-    @staticmethod
-    def get_iter(features_lst, level, args):
+    def get_iter(self, features_lst, level, args):
         all_input_ids = []
         all_input_mask = []
         all_segment_ids = []
@@ -217,6 +217,7 @@ class BaseTrainer(object):
             dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
                                                      sampler=train_sampler
                                                      , num_workers=args.workers
+                                                     , worker_init_fn=self.set_random_seed(self.args.random_seed)
                                                      , pin_memory=True, drop_last=True)
 
         return dataloader, train_sampler
@@ -323,10 +324,23 @@ class BaseTrainer(object):
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
 
-    def set_random_seed(self, random_seed=2019):
-        torch.manual_seed(random_seed)
-        torch.cuda.manual_seed(random_seed)
-        np.random.seed(random_seed)
+    # def set_random_seed(self, random_seed=2019):
+    #     torch.manual_seed(random_seed)
+    #     torch.cuda.manual_seed(random_seed)
+    #     np.random.seed(random_seed)
+
+    def set_random_seed(self, random_seed):
+        if random_seed is not None:
+            random.seed(random_seed)
+            np.random.seed(random_seed)
+            torch.manual_seed(random_seed)
+            torch.cuda.manual_seed_all(random_seed)
+            cudnn.deterministic = True
+            warnings.warn('You have chosen to seed training. '
+                          'This will turn on the CUDNN deterministic setting, '
+                          'which can slow down your training considerably! '
+                          'You may see unexpected behavior when restarting '
+                          'from checkpoints.')
 
 
 class AdvTrainer(BaseTrainer):
