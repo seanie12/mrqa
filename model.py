@@ -34,7 +34,7 @@ class DomainQA(nn.Module):
         super(DomainQA, self).__init__()
         if isinstance(bert_name_or_config, BertConfig):
             self.bert = BertModel(bert_name_or_config)
-        else: 
+        else:
             self.bert = BertModel.from_pretrained("bert-base-uncased")
 
         self.qa_outputs = nn.Linear(hidden_size, 2)
@@ -43,7 +43,7 @@ class DomainQA(nn.Module):
         self.qa_outputs.bias.data.zero_()
         self.discriminator = DomainDiscriminator(num_classes, hidden_size, num_layers, dropout)
 
-        if qa_path is not None:
+        if len(qa_path) != 1:
             print("load qa model")
             state_dict = torch.load(qa_path, map_location="cpu")
             new_dict = dict()
@@ -58,7 +58,7 @@ class DomainQA(nn.Module):
             self.bert.load_state_dict(new_dict)
             self.qa_outputs.load_state_dict(linear_dict)
 
-        if dis_path is not None:
+        if len(dis_path) != 1:
             print("load discriminator")
             state_dict = torch.load(dis_path, map_location="cpu")
             self.discriminator.load_state_dict(state_dict)
