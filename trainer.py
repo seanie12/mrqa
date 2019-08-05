@@ -204,7 +204,10 @@ class BaseTrainer(object):
                                    all_start_positions, all_end_positions, all_labels)
         if args.distributed:
             train_sampler = DistributedSampler(train_data)
-            dataloader = DataLoader(train_data, num_workers=args.workers, pin_memory=True,
+            dataloader = DataLoader(train_data
+                                    #, num_workers=args.workers
+                                    num_worker=0
+                                    , pin_memory=True,
                                     sampler=train_sampler, batch_size=args.batch_size)
         else:
             # train_sampler = RandomSampler(train_data)
@@ -216,7 +219,8 @@ class BaseTrainer(object):
 
             dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
                                                      sampler=train_sampler
-                                                     , num_workers=args.workers
+                                                     #, num_workers=args.workers
+                                                     , num_workers=0
                                                      , worker_init_fn=self.set_random_seed(self.args.random_seed)
                                                      , pin_memory=True, drop_last=True)
 
@@ -335,6 +339,7 @@ class BaseTrainer(object):
             np.random.seed(random_seed)
             torch.manual_seed(random_seed)
             torch.cuda.manual_seed_all(random_seed)
+            cudnn.benchmark = False
             cudnn.deterministic = True
             warnings.warn('You have chosen to seed training. '
                           'This will turn on the CUDNN deterministic setting, '
