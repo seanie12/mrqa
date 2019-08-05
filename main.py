@@ -117,8 +117,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_layers", type=int, default=3, help="number of layers for discriminator")
     parser.add_argument("--dropout", type=float, default=0.1, help="dropout for discriminator")
     parser.add_argument("--anneal", action="store_true")
-    parser.add_argument("--qa_path", type=str, default="./save/qa/base_model", help="pre-trained model path")
-    parser.add_argument("--dis_path", type=str, default="./save/dis/dis_best")
+    parser.add_argument("--qa_path", type=str, default=".", help="pre-trained model path")
+    parser.add_argument("--dis_path", type=str, default=".")
     args = parser.parse_args()
 
     main(args)
