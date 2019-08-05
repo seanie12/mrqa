@@ -206,7 +206,7 @@ class BaseTrainer(object):
             train_sampler = DistributedSampler(train_data)
             dataloader = DataLoader(train_data
                                     #, num_workers=args.workers
-                                    , num_worker=0
+                                    , num_workers=0
                                     , pin_memory=True,
                                     sampler=train_sampler, batch_size=args.batch_size)
         else:
