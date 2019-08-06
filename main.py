@@ -119,6 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--anneal", action="store_true")
     parser.add_argument("--qa_path", type=str, default=".", help="pre-trained model path")
     parser.add_argument("--dis_path", type=str, default=".")
+    parser.add_argument("--concat", action="store_true", help="whether to use both cls and sep embedding")
     args = parser.parse_args()
 
     main(args)
