@@ -6,13 +6,19 @@ from utils import kl_coef
 
 
 class DomainDiscriminator(nn.Module):
-    def __init__(self, num_classes=6, hidden_size=768, num_layers=3, dropout=0.1):
+    def __init__(self, num_classes=6, input_size=768 * 2,
+                 hidden_size=768, num_layers=3, dropout=0.1):
         super(DomainDiscriminator, self).__init__()
         self.num_layers = num_layers
         hidden_layers = []
-        for _ in range(num_layers):
+        for i in range(num_layers):
+            if i == 0:
+                input_dim = input_size
+            else:
+                input_dim = hidden_size
             hidden_layers.append(nn.Sequential(
-                nn.Linear(hidden_size, hidden_size)
+                nn.Linear(input_dim, hidden_size),
+                nn.ReLU()
                 , nn.Dropout(dropout)
             ))
         hidden_layers.append(nn.Linear(hidden_size, num_classes))
@@ -21,7 +27,7 @@ class DomainDiscriminator(nn.Module):
     def forward(self, x):
         # forward pass
         for i in range(self.num_layers - 1):
-            x = F.relu(self.hidden_layers[i](x))
+            x = self.hidden_layers[i](x)
         logits = self.hidden_layers[-1](x)
         log_prob = F.log_softmax(logits, dim=1)
         return log_prob
@@ -29,7 +35,7 @@ class DomainDiscriminator(nn.Module):
 
 class DomainQA(nn.Module):
     def __init__(self, bert_name_or_config, num_classes=6, hidden_size=768,
-                 num_layers=3, dropout=0.1, dis_lambda=0.5, anneal=False,
+                 num_layers=3, dropout=0.1, dis_lambda=0.5, concat=False, anneal=False,
                  qa_path=None, dis_path=None):
         super(DomainQA, self).__init__()
         if isinstance(bert_name_or_config, BertConfig):
@@ -41,7 +47,11 @@ class DomainQA(nn.Module):
         # init weight
         self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)
         self.qa_outputs.bias.data.zero_()
-        self.discriminator = DomainDiscriminator(num_classes, hidden_size, num_layers, dropout)
+        if concat:
+            input_size = 2 * hidden_size
+        else:
+            input_size = hidden_size
+        self.discriminator = DomainDiscriminator(num_classes, input_size, hidden_size, num_layers, dropout)
 
         if len(qa_path) != 1:
             print("load qa model")
@@ -65,6 +75,8 @@ class DomainQA(nn.Module):
         self.num_classes = num_classes
         self.dis_lambda = dis_lambda
         self.anneal = anneal
+        self.concat = concat
+        self.sep_id = 102
 
     # only for prediction
     def forward(self, input_ids, token_type_ids, attention_mask,
@@ -91,8 +103,12 @@ class DomainQA(nn.Module):
 
     def forward_qa(self, input_ids, token_type_ids, attention_mask, start_positions, end_positions, global_step):
         sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-
-        hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+        cls_embedding = sequence_output[:, 0]
+        if self.concat:
+            sep_embedding = self.get_sep_embedding(input_ids, sequence_output)
+            hidden = torch.cat([cls_embedding, sep_embedding], dim=1)
+        else:
+            hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
         log_prob = self.discriminator(hidden)
         targets = torch.ones_like(log_prob) * (1 / self.num_classes)
         # As with NLLLoss, the input given is expected to contain log-probabilities
@@ -127,9 +143,21 @@ class DomainQA(nn.Module):
     def forward_discriminator(self, input_ids, token_type_ids, attention_mask, labels):
         with torch.no_grad():
             sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-            hidden = sequence_output[:, 0]  # [b, d] : [CLS] representation
+            cls_embedding = sequence_output[:, 0]  # [b, d] : [CLS] representation
+            if self.concat:
+                sep_embedding = self.get_sep_embedding(input_ids, sequence_output)
+                hidden = torch.cat([cls_embedding, sep_embedding], dim=-1)  # [b, 2*d]
+            else:
+                hidden = cls_embedding
         log_prob = self.discriminator(hidden.detach())
         criterion = nn.NLLLoss()
         loss = criterion(log_prob, labels)
 
         return loss
+
+    def get_sep_embedding(self, input_ids, sequence_output):
+        batch_size = input_ids.size(0)
+        sep_idx = (input_ids == self.sep_id).sum(1)
+        sep_embedding = sequence_output[torch.arange(batch_size), sep_idx]
+        return sep_embedding
+
