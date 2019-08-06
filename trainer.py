@@ -361,7 +361,8 @@ class AdvTrainer(BaseTrainer):
 
         self.model = DomainQA(self.args.bert_model, self.args.num_classes,
                               self.args.hidden_size, self.args.num_layers,
-                              self.args.dropout, self.args.dis_lambda, self.args.anneal,
+                              self.args.dropout, self.args.dis_lambda,
+                              self.args.concat, self.args.anneal,
                               self.args.qa_path, self.args.dis_path)
         if self.args.load_model is not None:
             print("loading model from ", self.args.load_model)
