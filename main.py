@@ -1,9 +1,12 @@
-from trainer import BaseTrainer, AdvTrainer, PreTrainer
-from distributed_run import distributed_main
-import torch
-from iterator2 import *
 import os
 import time
+import argparse
+
+import torch
+import torch.multiprocessing as mp
+
+from trainer import BaseTrainer, AdvTrainer, PreTrainer
+from iterator import iter_main
 
 
 def main(args):
@@ -31,7 +34,26 @@ def main(args):
     args.distributed = (args.use_cuda and args.multiprocessing_distributed)
 
     if args.distributed:
-        distributed_main(args)
+        def worker(gpu, ngpus_per_node, args):
+            if args.adv:
+                model = AdvTrainer(args)
+            else:
+                model = BaseTrainer(args)
+
+            model.make_model_env(gpu, ngpus_per_node)
+            model.make_run_env()
+            model.train()
+
+        ngpus_per_node = len(args.devices)
+        assert ngpus_per_node <= torch.cuda.device_count(), "GPU device num exceeds max capacity."
+
+        # Since we have ngpus_per_node processes per node, the total world_size
+        # needs to be adjusted accordingly
+        args.world_size = ngpus_per_node * args.world_size
+        # Use torch.multiprocessing.spawn to launch distributed processes: the
+        # main_worker process function
+
+        mp.spawn(worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         if args.adv:
             model = AdvTrainer(args)
@@ -108,7 +130,8 @@ if __name__ == "__main__":
     parser.add_argument("--save_model_by_all_devices", default=False, help="Save best model in all devices or not")
     parser.add_argument("--make_sample_prediction", default=False, help="Make sample prediction during training or not")
     parser.add_argument("--random_seed", default=2019, help="random state (seed)")
-    # for adversarial learning
+
+    # For adversarial learning
     parser.add_argument("--adv", action="store_true", help="adversarial training")
     parser.add_argument("--pretraining", action="store_true", help="pretraining discriminator")
     parser.add_argument("--dis_lambda", type=float, default=0.01, help="importance of adversarial loss")

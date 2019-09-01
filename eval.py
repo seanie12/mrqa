@@ -1,11 +1,13 @@
-from pytorch_pretrained_bert import BertForQuestionAnswering, BertTokenizer
-from generator.iterator import read_squad_examples, convert_examples_to_features, write_predictions
-from mrqa_official_eval import evaluate, read_answers
-import argparse
-import torch
-from torch.utils.data import TensorDataset, SequentialSampler, DataLoader
 import collections
 import json
+import argparse
+
+import torch
+from torch.utils.data import TensorDataset, SequentialSampler, DataLoader
+from pytorch_pretrained_bert import BertForQuestionAnswering, BertTokenizer
+
+from iterator import read_squad_examples, convert_examples_to_features, write_predictions
+from mrqa_official_eval import evaluate, read_answers
 
 
 def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):

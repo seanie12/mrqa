@@ -3,23 +3,25 @@ import os
 import pickle
 import random
 import time
+import warnings
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
 import torch.nn as nn
-from pytorch_pretrained_bert import BertForQuestionAnswering
-from pytorch_pretrained_bert import BertTokenizer
-from pytorch_pretrained_bert.optimization import BertAdam
 from torch.nn import DataParallel
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
-import warnings
+
+from pytorch_pretrained_bert import BertForQuestionAnswering
+from pytorch_pretrained_bert import BertTokenizer
+from pytorch_pretrained_bert.optimization import BertAdam
+
 from eval import eval_qa
-from generator.iterator import read_squad_examples, \
-    read_level_file, set_level_in_examples, sort_features_by_level, convert_examples_to_features
+from iterator import read_squad_examples, read_level_file, set_level_in_examples, sort_features_by_level, \
+    convert_examples_to_features
 from model import DomainQA, DomainDiscriminator
 from utils import eta, progress_bar
 
@@ -86,7 +88,7 @@ class BaseTrainer(object):
 
         max_len = max([len(f) for f in self.features_lst])
         num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-                                       * self.args.epochs * len(self.features_lst)
+            * self.args.epochs * len(self.features_lst)
 
         if self.args.freeze_bert:
             for param in self.model.bert.parameters():
@@ -126,7 +128,7 @@ class BaseTrainer(object):
     def get_features(self, train_folder, debug=False):
         level_folder = self.args.level_folder
         pickled_folder = self.args.pickled_folder \
-                         + "_{}_{}".format(self.args.bert_model, str(self.args.skip_no_ans))
+            + "_{}_{}".format(self.args.bert_model, str(self.args.skip_no_ans))
 
         features_lst = []
 
@@ -215,10 +217,7 @@ class BaseTrainer(object):
             train_sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
 
             dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
-                                                     sampler=train_sampler
-                                                     , num_workers=args.workers
-                                                     , worker_init_fn=self.set_random_seed(self.args.random_seed)
-                                                     , pin_memory=True, drop_last=True)
+                                                     sampler=train_sampler, num_workers=args.workers, worker_init_fn=self.set_random_seed(self.args.random_seed), pin_memory=True, drop_last=True)
 
         return dataloader, train_sampler
 
@@ -304,10 +303,7 @@ class BaseTrainer(object):
             file_name = dev_file.split(".")[0]
             prediction_file = os.path.join(self.args.result_dir, "epoch_{}_{}_.json".format(epoch, file_name))
             file_path = os.path.join(self.args.dev_folder, dev_file)
-            metrics = eval_qa(self.model, file_path
-                              , prediction_file, args=self.args
-                              , tokenizer=self.tokenizer
-                              , batch_size=self.args.batch_size
+            metrics = eval_qa(self.model, file_path, prediction_file, args=self.args, tokenizer=self.tokenizer, batch_size=self.args.batch_size
                               )
             f1 = metrics["f1"]
             fw.write("{} : {}\n".format(file_name, f1))
@@ -374,10 +370,10 @@ class AdvTrainer(BaseTrainer):
 
         max_len = max([len(f) for f in self.features_lst])
         num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-                                       * self.args.epochs * len(self.features_lst)
+            * self.args.epochs * len(self.features_lst)
 
         qa_params = list(self.model.bert.named_parameters()) \
-                    + list(self.model.qa_outputs.named_parameters())
+            + list(self.model.qa_outputs.named_parameters())
         dis_params = list(self.model.discriminator.named_parameters())
         self.qa_optimizer = get_opt(qa_params, num_train_optimization_steps, self.args)
         self.dis_optimizer = get_opt(dis_params, num_train_optimization_steps, self.args)
@@ -511,7 +507,7 @@ class PreTrainer(BaseTrainer):
 
         max_len = max([len(f) for f in self.features_lst])
         num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-                                       * self.args.epochs * len(self.features_lst)
+            * self.args.epochs * len(self.features_lst)
 
         params = list(self.model.named_parameters())
         self.optimizer = get_opt(params, num_train_optimization_steps, self.args)

@@ -110,6 +110,7 @@ venv.bak/
 deprecated/
 sample.json
 data/train
+data/dev
 pickled_data/
 pickled_data_*/
 save/
