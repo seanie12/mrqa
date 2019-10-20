@@ -463,13 +463,16 @@ class AdvTrainer(BaseTrainer):
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
-        save_file = os.path.join(self.args.save_dir, "adv_{}_{}".format(epoch, loss))
+        save_file = os.path.join(self.args.save_dir, "adv_{}_{:.3f}.pt".format(epoch, loss))
+        save_file_config = os.path.join(self.args.save_dir, "adv_config_{}_{:.3f}.json".format(epoch, loss))
+
         if hasattr(self.model, "module"):
             model_to_save = self.model.module
         else:
+            # TODO: In BaseTrainer, it is self.model
             model_to_save = self.model.feat_ext
-        state_dict = model_to_save.state_dict()
-        torch.save(state_dict, save_file)
+        torch.save(model_to_save.state_dict(), save_file)
+        model_to_save.config.to_json_file(save_file_config)
 
 
 class PreTrainer(BaseTrainer):
