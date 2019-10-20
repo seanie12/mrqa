@@ -18,8 +18,7 @@ class DomainDiscriminator(nn.Module):
                 input_dim = hidden_size
             hidden_layers.append(nn.Sequential(
                 nn.Linear(input_dim, hidden_size),
-                nn.ReLU()
-                , nn.Dropout(dropout)
+                nn.ReLU(), nn.Dropout(dropout)
             ))
         hidden_layers.append(nn.Linear(hidden_size, num_classes))
         self.hidden_layers = nn.ModuleList(hidden_layers)
@@ -160,4 +159,3 @@ class DomainQA(nn.Module):
         sep_idx = (input_ids == self.sep_id).sum(1)
         sep_embedding = sequence_output[torch.arange(batch_size), sep_idx]
         return sep_embedding
-

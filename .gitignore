@@ -107,12 +107,9 @@ venv.bak/
 #################################
 .vscode/
 .idea/
-deprecated/
-sample.json
 data/train
 data/dev
 pickled_data/
 pickled_data_*/
 save/
-debug.py
-*.gz
+result/

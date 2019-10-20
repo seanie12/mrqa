@@ -20,15 +20,16 @@ from pytorch_pretrained_bert import BertTokenizer
 from pytorch_pretrained_bert.optimization import BertAdam
 
 from eval import eval_qa
-from iterator import read_squad_examples, read_level_file, set_level_in_examples, sort_features_by_level, \
-    convert_examples_to_features
+from iterator import read_squad_examples, convert_examples_to_features
 from model import DomainQA, DomainDiscriminator
 from utils import eta, progress_bar
 
 
 def get_opt(param_optimizer, num_train_optimization_steps, args):
-    # hack to remove pooler, which is not used
-    # thus it produce None grad that break apex
+    """
+    Hack to remove pooler, which is not used
+    Thus it produce None grad that break apex
+    """
     param_optimizer = [n for n in param_optimizer if 'pooler' not in n[0]]
 
     no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
@@ -43,13 +44,13 @@ def get_opt(param_optimizer, num_train_optimization_steps, args):
                     t_total=num_train_optimization_steps)
 
 
-def make_weights_for_balanced_classes(classes, nclasses):
-    count = [0] * nclasses
+def make_weights_for_balanced_classes(classes, n_classes):
+    count = [0] * n_classes
     for c in classes:
         count[c] += 1
-    weight_per_class = [0.] * nclasses
+    weight_per_class = [0.] * n_classes
     N = float(sum(count))
-    for i in range(nclasses):
+    for i in range(n_classes):
         weight_per_class[i] = N / float(count[i])
     weight = [0] * len(classes)
     for idx, val in enumerate(classes):
@@ -65,12 +66,15 @@ class BaseTrainer(object):
         self.tokenizer = BertTokenizer.from_pretrained(args.bert_model,
                                                        do_lower_case=args.do_lower_case)
         if args.debug:
-            print("debugging mode on.")
+            print("Debugging mode on.")
         self.features_lst = self.get_features(self.args.train_folder, self.args.debug)
+        print("Number of lines: {}".format(len(self.features_lst)))
 
     def make_model_env(self, gpu, ngpus_per_node):
-        if gpu is not None:
+        if self.args.distributed:
             self.args.gpu = self.args.devices[gpu]
+        else:
+            self.args.gpu = 0
 
         if self.args.use_cuda and self.args.distributed:
             if self.args.multiprocessing_distributed:
@@ -80,15 +84,16 @@ class BaseTrainer(object):
             dist.init_process_group(backend=self.args.dist_backend, init_method=self.args.dist_url,
                                     world_size=self.args.world_size, rank=self.args.rank)
 
+        # Load baseline model
         self.model = BertForQuestionAnswering.from_pretrained(self.args.bert_model)
+
         if self.args.load_model is not None:
-            print("loading model from ", self.args.load_model)
+            print("Loading model from ", self.args.load_model)
             # self.model.load_state_dict(torch.load(self.args.load_model))
             self.model.load_state_dict(torch.load(self.args.load_model, map_location=lambda storage, loc: storage))
 
         max_len = max([len(f) for f in self.features_lst])
-        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-            * self.args.epochs * len(self.features_lst)
+        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) * self.args.epochs * len(self.features_lst)
 
         if self.args.freeze_bert:
             for param in self.model.bert.parameters():
@@ -106,7 +111,7 @@ class BaseTrainer(object):
                                                      find_unused_parameters=True)
             else:
                 self.model.cuda()
-                self.model = DataParallel(self.model, device_ids=self.args.devices)
+                # self.model = DataParallel(self.model, device_ids=self.args.devices)
 
         cudnn.benchmark = True
 
@@ -126,33 +131,26 @@ class BaseTrainer(object):
             print(self.dev_files)
 
     def get_features(self, train_folder, debug=False):
-        level_folder = self.args.level_folder
-        pickled_folder = self.args.pickled_folder \
-            + "_{}_{}".format(self.args.bert_model, str(self.args.skip_no_ans))
+        pickled_folder = self.args.pickled_folder + "_{}_{}".format(self.args.bert_model, str(self.args.skip_no_ans))
 
         features_lst = []
 
         files = [f for f in os.listdir(train_folder) if f.endswith(".gz")]
-        print("the number of data-set:{}".format(len(files)))
+        print("Number of data set:{}".format(len(files)))
         for file in files:
             data_name = file.split(".")[0]
             # Check whether pkl file already exists
-            pickle_file_name = data_name + '.pkl'
+            pickle_file_name = '{}.pkl'.format(data_name)
             pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
             if os.path.exists(pickle_file_path):
                 with open(pickle_file_path, 'rb') as pkl_f:
                     print("Loading {} file as pkl...".format(data_name))
                     features_lst.append(pickle.load(pkl_f))
             else:
-                level_name = data_name + ".tsv"
                 print("processing {} file".format(data_name))
-                level_path = os.path.join(level_folder, level_name)
                 file_path = os.path.join(train_folder, file)
 
                 train_examples = read_squad_examples(file_path, debug=debug)
-                # read level file and set level
-                levels = read_level_file(level_path, sep='\t')
-                train_examples = set_level_in_examples(train_examples, levels)
 
                 train_features = convert_examples_to_features(
                     examples=train_examples,
@@ -163,7 +161,6 @@ class BaseTrainer(object):
                     is_training=True,
                     skip_no_ans=self.args.skip_no_ans
                 )
-                train_features = sort_features_by_level(train_features, desc=False)
 
                 features_lst.append(train_features)
 
@@ -175,7 +172,7 @@ class BaseTrainer(object):
 
         return features_lst
 
-    def get_iter(self, features_lst, level, args):
+    def get_iter(self, features_lst, args):
         all_input_ids = []
         all_input_mask = []
         all_segment_ids = []
@@ -206,29 +203,29 @@ class BaseTrainer(object):
                                    all_start_positions, all_end_positions, all_labels)
         if args.distributed:
             train_sampler = DistributedSampler(train_data)
-            dataloader = DataLoader(train_data, num_workers=args.workers, pin_memory=True,
-                                    sampler=train_sampler, batch_size=args.batch_size)
+            data_loader = DataLoader(train_data, num_workers=args.workers, pin_memory=True,
+                                     sampler=train_sampler, batch_size=args.batch_size)
         else:
             # train_sampler = RandomSampler(train_data)
-            # dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
+            # data_loader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
 
             weights = make_weights_for_balanced_classes(all_labels.detach().cpu().numpy().tolist(), 6)
             weights = torch.DoubleTensor(weights)
             train_sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
 
-            dataloader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
-                                                     sampler=train_sampler, num_workers=args.workers, worker_init_fn=self.set_random_seed(self.args.random_seed), pin_memory=True, drop_last=True)
+            data_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
+                                                      sampler=train_sampler, num_workers=args.workers,
+                                                      worker_init_fn=self.set_random_seed(self.args.random_seed), pin_memory=True, drop_last=True)
 
-        return dataloader, train_sampler
+        return data_loader, train_sampler
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
 
-        save_file = os.path.join(self.args.save_dir, "base_model_{}_{:.3f}".format(epoch, loss))
-        save_file_config = os.path.join(self.args.save_dir, "base_config_{}_{:.3f}".format(epoch, loss))
+        save_file = os.path.join(self.args.save_dir, "base_model_{}_{:.3f}.pt".format(epoch, loss))
+        save_file_config = os.path.join(self.args.save_dir, "base_config_{}_{:.3f}.json".format(epoch, loss))
 
-        model_to_save = self.model.module if hasattr(self.model,
-                                                     'module') else self.model  # Only save the model it-self
+        model_to_save = self.model.module if hasattr(self.model, 'module') else self.model  # Only save the model it-self
         torch.save(model_to_save.state_dict(), save_file)
         model_to_save.config.to_json_file(save_file_config)
 
@@ -236,8 +233,7 @@ class BaseTrainer(object):
         step = 1
         avg_loss = 0
         global_step = 1
-        level = 1.0
-        iter_lst = [self.get_iter(self.features_lst, level, self.args)]
+        iter_lst = [self.get_iter(self.features_lst, self.args)]
         num_batches = sum([len(iterator[0]) for iterator in iter_lst])
         for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
             self.model.train()
@@ -301,10 +297,9 @@ class BaseTrainer(object):
         result_dict = dict()
         for dev_file in self.dev_files:
             file_name = dev_file.split(".")[0]
-            prediction_file = os.path.join(self.args.result_dir, "epoch_{}_{}_.json".format(epoch, file_name))
+            prediction_file = os.path.join(self.args.result_dir, "epoch_{}_{}.json".format(epoch, file_name))
             file_path = os.path.join(self.args.dev_folder, dev_file)
-            metrics = eval_qa(self.model, file_path, prediction_file, args=self.args, tokenizer=self.tokenizer, batch_size=self.args.batch_size
-                              )
+            metrics = eval_qa(self.model, file_path, prediction_file, args=self.args, tokenizer=self.tokenizer, batch_size=self.args.batch_size)
             f1 = metrics["f1"]
             fw.write("{} : {}\n".format(file_name, f1))
             result_dict[dev_file] = f1
@@ -360,8 +355,9 @@ class AdvTrainer(BaseTrainer):
                               self.args.dropout, self.args.dis_lambda,
                               self.args.concat, self.args.anneal,
                               self.args.qa_path, self.args.dis_path)
+
         if self.args.load_model is not None:
-            print("loading model from ", self.args.load_model)
+            print("Loading model from ", self.args.load_model)
             self.model.load_state_dict(torch.load(self.args.load_model, map_location="cpu"))
 
         if self.args.freeze_bert:
@@ -369,11 +365,9 @@ class AdvTrainer(BaseTrainer):
                 param.requires_grad = False
 
         max_len = max([len(f) for f in self.features_lst])
-        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-            * self.args.epochs * len(self.features_lst)
+        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) * self.args.epochs * len(self.features_lst)
 
-        qa_params = list(self.model.bert.named_parameters()) \
-            + list(self.model.qa_outputs.named_parameters())
+        qa_params = list(self.model.bert.named_parameters()) + list(self.model.qa_outputs.named_parameters())
         dis_params = list(self.model.discriminator.named_parameters())
         self.qa_optimizer = get_opt(qa_params, num_train_optimization_steps, self.args)
         self.dis_optimizer = get_opt(dis_params, num_train_optimization_steps, self.args)
@@ -388,7 +382,7 @@ class AdvTrainer(BaseTrainer):
                                                      find_unused_parameters=True)
             else:
                 self.model.cuda()
-                self.model = DataParallel(self.model, device_ids=self.args.devices)
+                # self.model = DataParallel(self.model, device_ids=self.args.devices)
 
         cudnn.benchmark = True
 
@@ -396,7 +390,7 @@ class AdvTrainer(BaseTrainer):
         step = 1
         avg_qa_loss = 0
         avg_dis_loss = 0
-        iter_lst = [self.get_iter(self.features_lst, 1.0, self.args)]
+        iter_lst = [self.get_iter(self.features_lst, self.args)]
         num_batches = sum([len(iterator[0]) for iterator in iter_lst])
         for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
             start = time.time()
@@ -506,8 +500,7 @@ class PreTrainer(BaseTrainer):
         self.qa_model.requires_grad = False
 
         max_len = max([len(f) for f in self.features_lst])
-        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) \
-            * self.args.epochs * len(self.features_lst)
+        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) * self.args.epochs * len(self.features_lst)
 
         params = list(self.model.named_parameters())
         self.optimizer = get_opt(params, num_train_optimization_steps, self.args)
@@ -525,14 +518,14 @@ class PreTrainer(BaseTrainer):
             else:
                 self.model.cuda()
                 self.qa_model.cuda()
-                self.model = DataParallel(self.model, device_ids=self.args.devices)
-                self.qa_model = DataParallel(self.qa_model, device_ids=self.args.devices)
+                # self.model = DataParallel(self.model, device_ids=self.args.devices)
+                # self.qa_model = DataParallel(self.qa_model, device_ids=self.args.devices)
         cudnn.benchmark = True
 
     def train(self):
         step = 1
         avg_dis_loss = 0
-        iter_lst = [self.get_iter(self.features_lst, 1.0, self.args)]
+        iter_lst = [self.get_iter(self.features_lst, self.args)]
         num_batches = sum([len(iterator[0]) for iterator in iter_lst])
         criterion = nn.NLLLoss()
         for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
@@ -580,8 +573,7 @@ class PreTrainer(BaseTrainer):
                     batch_step += 1
                     print(msg, end="\r")
 
-            print("{} epoch: {}, final dis loss: {:.4f}"
-                  .format(self.args.gpu, epoch, avg_dis_loss))
+            print("{} epoch: {}, final dis loss: {:.4f}".format(self.args.gpu, epoch, avg_dis_loss))
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)

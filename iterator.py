@@ -124,7 +124,6 @@ class SquadExample(object):
         self.orig_answer_text = orig_answer_text
         self.start_position = start_position
         self.end_position = end_position
-        self.level = None
 
     def __str__(self):
         return self.__repr__()
@@ -155,8 +154,7 @@ class InputFeatures(object):
                  input_mask,
                  segment_ids,
                  start_position=None,
-                 end_position=None,
-                 level=None):
+                 end_position=None):
         self.unique_id = unique_id
         self.example_index = example_index
         self.doc_span_index = doc_span_index
@@ -168,8 +166,6 @@ class InputFeatures(object):
         self.segment_ids = segment_ids
         self.start_position = start_position
         self.end_position = end_position
-        # For level
-        self.level = level
 
 
 def read_squad_examples(input_file, debug=False):
@@ -397,50 +393,10 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     input_mask=input_mask,
                     segment_ids=segment_ids,
                     start_position=start_position,
-                    end_position=end_position,
-                    level=example.level))
+                    end_position=end_position))
             unique_id += 1
 
     return features
-
-
-def read_level_file(input_file, sep='\t'):
-    """
-    - id sep level
-    - save it as dictionary
-    """
-    levels = dict()
-    with open(input_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            item_lst = line.rstrip().split(sep)
-            levels[item_lst[0]] = float(item_lst[1])
-
-    return levels
-
-
-def sort_features_by_level(features, desc=False):
-    """
-    features: list of feature obj
-    desc: sorting descending order
-    """
-    # sort element by level
-    features.sort(key=lambda x: x.level, reverse=desc)
-    return features
-
-
-def set_level_in_examples(examples, levels):
-    """
-    examples: list of example object
-    levels: {'id1': 0.48. 'id2': 0.12, ...} dictionary
-    """
-    for example in examples:
-        try:
-            example.level = levels[example.qas_id]
-        except:
-            print("Level doesn't exists...Setting the level 0.5 as default")
-            example.level = 0.5
-
-    return examples
 
 
 class Config(object):
@@ -791,29 +747,26 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
 
 
 def save_features(args):
-    file, args = args
-    print(file)
+    """
+    Saving preprocessed features as pickle file
+    """
+    filename, args = args
+    print(filename)
 
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
 
-    data_name = file.split(".")[0]
+    data_name = filename.split(".")[0]
     pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
-    # Check whether pkl file already exists
     pickle_file_name = data_name + '.pkl'
     pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
-    if os.path.exists(pickle_file_path):
-        pass
+
+    if os.path.exists(pickle_file_path):  # Check whether pkl file already exists
+        return
     else:
-        level_name = data_name + ".tsv"
-        print("processing {} file".format(data_name))
-        level_path = os.path.join(args.level_folder, level_name)
-        file_path = os.path.join(args.train_folder, file)
+        print("[Processing {} file...]".format(data_name))
+        file_path = os.path.join(args.train_folder, filename)
 
         train_examples = read_squad_examples(file_path, debug=args.debug)
-        # read level file and set level
-        levels = read_level_file(level_path, sep='\t')
-        train_examples = set_level_in_examples(train_examples, levels)
-
         train_features = convert_examples_to_features(
             examples=train_examples,
             tokenizer=tokenizer,
@@ -823,22 +776,20 @@ def save_features(args):
             is_training=True,
             skip_no_ans=args.skip_no_ans
         )
-        train_features = sort_features_by_level(train_features, desc=False)
 
         # Save feature lst as pickle (For reuse & fast loading)
         with open(pickle_file_path, 'wb') as pkl_f:
             print("Saving {} file as pkl...".format(data_name))
             pickle.dump(train_features, pkl_f)
 
-        print(file, "done")
-        # return train_features
+        print("[{} saving done]".format(filename))
 
 
 def iter_main(args):
-    print("start data pre-load with multiprocessing.")
+    print("Start data preprocessing with multiprocessing.")
 
     files = [(f, args) for f in os.listdir(args.train_folder) if f.endswith(".gz")]
-    print("the number of data-set:{}".format(len(files)))
+    print("Number of data set: {}".format(len(files)))
 
     pool = multiprocessing.Pool(processes=len(files))
     pool.map(save_features, files)
@@ -847,18 +798,12 @@ def iter_main(args):
 
 
 def iter_test(file_name):
-    '''
+    """
     This is just a test code!
-    '''
+    """
     config = Config()
     tokenizer = BertTokenizer.from_pretrained(config.bert_model, do_lower_case=config.do_lower_case)
-    train_examples = read_squad_examples('../data/train/{}.jsonl.gz'.format(file_name))
-
-    # import random
-
-    # with open('squad_level.txt', 'w', encoding='utf-8') as f:
-    #     for example in train_examples:
-    #         f.write("{}\t{}\n".format(example.qas_id, random.random()))
+    train_examples = read_squad_examples('./data/train/{}.jsonl.gz'.format(file_name))
 
     """
     ***** Running training *****
@@ -866,10 +811,6 @@ def iter_test(file_name):
         Num split examples = 35111 (train_features)
     length of examples and features are different but difficulty function is based on examples 
     """
-    # Read level
-    levels = read_level_file('difficulty/{}.tsv'.format(file_name), sep='\t')
-    # Set level attribute in each example
-    train_examples = set_level_in_examples(train_examples, levels)
 
     train_features = convert_examples_to_features(
         examples=train_examples,
@@ -877,15 +818,10 @@ def iter_test(file_name):
         max_seq_length=config.max_seq_length,
         max_query_length=config.max_query_length,
         doc_stride=config.doc_stride,
-        is_training=True
-    )
+        is_training=True)
 
-    # Read Level and sort
-    train_features = sort_features_by_level(train_features, desc=False)
-
-    # Check
     for i in range(10):
-        print(train_features[i].level)
+        print(train_features[i].input_ids)
 
     logger.info("***** Running training *****")
     logger.info("  Num orig examples = %d", len(train_examples))

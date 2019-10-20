@@ -13,10 +13,6 @@ from mrqa_official_eval import evaluate, read_answers
 def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
     eval_examples = read_squad_examples(file_path, debug=False)
 
-    # In test time, there is no level file and it is not necessary for inference
-    for example in eval_examples:
-        example.level = 0
-
     eval_features = convert_examples_to_features(
         examples=eval_examples,
         tokenizer=tokenizer,
@@ -39,7 +35,7 @@ def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
     model.eval()
     all_results = []
     example_index = -1
-    for j, batch in enumerate(eval_loader):
+    for _, batch in enumerate(eval_loader):
         input_ids, input_mask, seg_ids = batch
         seq_len = torch.sum(torch.sign(input_ids), 1)
         max_len = torch.max(seq_len)
