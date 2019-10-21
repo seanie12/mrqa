@@ -42,6 +42,8 @@ class DomainQA(nn.Module):
         else:
             self.bert = BertModel.from_pretrained("bert-base-uncased")
 
+        self.config = self.bert.config
+
         self.qa_outputs = nn.Linear(hidden_size, 2)
         # init weight
         self.qa_outputs.weight.data.normal_(mean=0.0, std=0.02)

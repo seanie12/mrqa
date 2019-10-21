@@ -5,8 +5,20 @@ import argparse
 import torch
 import torch.multiprocessing as mp
 
-from trainer import BaseTrainer, AdvTrainer, PreTrainer
+from trainer import BaseTrainer, AdvTrainer
 from iterator import iter_main
+
+# should be located outside of main function!
+def worker(gpu, ngpus_per_node, args):
+    if args.adv:
+        print("running adv training...")
+        model = AdvTrainer(args)
+    else:
+        print("running base training...")
+        model = BaseTrainer(args)
+    model.make_model_env(gpu, ngpus_per_node)
+    model.make_run_env()
+    model.train()
 
 
 def main(args):
@@ -14,7 +26,8 @@ def main(args):
     pickled_folder = args.pickled_folder + "_{}_{}".format(args.bert_model, str(args.skip_no_ans))
     if not os.path.exists(pickled_folder):
         os.mkdir(pickled_folder)
-    iter_main(args)
+    file_num = iter_main(args)
+    args.num_classes = file_num
 
     # make save and result directory
     save_dir = os.path.join("./save", "{}_{}".format("adv" if args.adv else "base", time.strftime("%m%d%H%M")))
@@ -27,41 +40,23 @@ def main(args):
         os.makedirs(result_dir)
     args.result_dir = result_dir
     args.devices = [int(gpu) for gpu in args.devices.split('_')]
-    args.use_cuda = args.use_cuda and torch.cuda.is_available()
-    args.distributed = (args.use_cuda and args.multiprocessing_distributed)
+    args.use_cuda = (args.use_cuda and torch.cuda.is_available())
+    args.distributed = (args.use_cuda and args.distributed)
+
+    ngpus_per_node = 0
+    if args.use_cuda :
+        ngpus_per_node = len(args.devices)
+        assert ngpus_per_node <= torch.cuda.device_count(), "GPU device number exceeds max capacity. select device ids correctly."
 
     if args.distributed:
-        def worker(gpu, ngpus_per_node, args):
-            if args.adv:
-                model = AdvTrainer(args)
-            else:
-                model = BaseTrainer(args)
-
-            model.make_model_env(gpu, ngpus_per_node)
-            model.make_run_env()
-            model.train()
-
-        ngpus_per_node = len(args.devices)
-        assert ngpus_per_node <= torch.cuda.device_count(), "GPU device num exceeds max capacity."
-
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
         args.world_size = ngpus_per_node * args.world_size
         # Use torch.multiprocessing.spawn to launch distributed processes: the
         # main_worker process function
-
         mp.spawn(worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
-        if args.adv:
-            model = AdvTrainer(args)
-        elif args.pretraining:
-            model = PreTrainer(args)
-        else:
-            model = BaseTrainer(args)
-
-        model.make_model_env(None, 4)
-        model.make_run_env()
-        model.train()
+        worker(None, ngpus_per_node, args)
 
 
 if __name__ == "__main__":
@@ -78,8 +73,10 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_proportion", default=0.1, type=float)
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int, help="gradient_accumulation_steps")
 
-    parser.add_argument("--do_lower_case", default=True, help="do lower case on text")
-    parser.add_argument("--use_cuda", default=True, help="use cuda or not")
+    #parser.add_argument("--do_lower_case", default=True, help="do lower case on text")
+    parser.add_argument("--do_lower_case", action="store_true", help="do lower case on text")
+    #parser.add_argument("--use_cuda", default=False, help="use cuda or not")
+    parser.add_argument("--use_cuda", action="store_true", help="use cuda or not")
 
     parser.add_argument("--do_valid", default=True, help="do validation or not")
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
@@ -89,7 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--pickled_folder", default="./pickled_data", type=str, help="path of saved pickle file")
     parser.add_argument("--load_model", default=None, type=str, help="load model")
     parser.add_argument("--skip_no_ans", action="store_true", help="whether to exclude no answer example")
-    parser.add_argument("--devices", type=str, default='0_1_2_3', help="gpu device ids to use")
+    parser.add_argument("--devices", type=str, default='0', help="gpu device ids to use, concat with '_', ex) '0_1_2_3'")
 
     parser.add_argument("--workers", default=4, help="Number of processes(workers) per node."
                                                      "It should be equal to the number of gpu devices to use in one node")
@@ -102,16 +99,15 @@ if __name__ == "__main__":
     parser.add_argument("--dist_url", default="tcp://127.0.0.1:9999", help="DistributedDataParallel server")
     parser.add_argument("--gpu", default=None,
                         help="Manual setting of gpu device. If it is not None, all parallel processes are disabled")
-    parser.add_argument("--multiprocessing_distributed", default=False, help="Use multiprocess distribution or not")
-    parser.add_argument("--save_model_by_all_devices", default=False, help="Save best model in all devices or not")
-    parser.add_argument("--make_sample_prediction", default=False, help="Make sample prediction during training or not")
+    parser.add_argument("--distributed", action="store_true", help="Use multiprocess distribution or not")
+    #parser.add_argument("--distributed", default=False, help="Use multiprocess distribution or not")
     parser.add_argument("--random_seed", default=2019, help="random state (seed)")
 
     # For adversarial learning
     parser.add_argument("--adv", action="store_true", help="adversarial training")
     parser.add_argument("--pretraining", action="store_true", help="pretraining discriminator")
     parser.add_argument("--dis_lambda", type=float, default=0.01, help="importance of adversarial loss")
-    parser.add_argument("--num_classes", type=int, default=6, help="num_classes for discriminator")
+    #parser.add_argument("--num_classes", type=int, default=2, help="num_classes for discriminator")
     parser.add_argument("--hidden_size", type=int, default=768, help="hidden size for discriminator")
     parser.add_argument("--num_layers", type=int, default=3, help="number of layers for discriminator")
     parser.add_argument("--dropout", type=float, default=0.1, help="dropout for discriminator")

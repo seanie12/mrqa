@@ -788,13 +788,17 @@ def save_features(args):
 def iter_main(args):
     print("Start data preprocessing with multiprocessing.")
 
-    files = [(f, args) for f in os.listdir(args.train_folder) if f.endswith(".gz")]
+    files = os.listdir(args.train_folder)
+    file_num = len(files)
+    files = [(f, args) for f in files if f.endswith(".gz")]
     print("Number of data set: {}".format(len(files)))
 
     pool = multiprocessing.Pool(processes=len(files))
     pool.map(save_features, files)
     pool.close()
     pool.join()
+    
+    return file_num
 
 
 def iter_test(file_name):

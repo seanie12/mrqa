@@ -68,7 +68,6 @@ class BaseTrainer(object):
         if args.debug:
             print("Debugging mode on.")
         self.features_lst = self.get_features(self.args.train_folder, self.args.debug)
-        print("Number of lines: {}".format(len(self.features_lst)))
 
     def make_model_env(self, gpu, ngpus_per_node):
         if self.args.distributed:
@@ -77,10 +76,9 @@ class BaseTrainer(object):
             self.args.gpu = 0
 
         if self.args.use_cuda and self.args.distributed:
-            if self.args.multiprocessing_distributed:
-                # For multiprocessing distributed training, rank needs to be the
-                # global rank among all the processes
-                self.args.rank = self.args.rank * ngpus_per_node + gpu
+            # For multiprocessing distributed training, rank needs to be the
+            # global rank among all the processes
+            self.args.rank = self.args.rank * ngpus_per_node + gpu
             dist.init_process_group(backend=self.args.dist_backend, init_method=self.args.dist_url,
                                     world_size=self.args.world_size, rank=self.args.rank)
 
@@ -89,7 +87,6 @@ class BaseTrainer(object):
 
         if self.args.load_model is not None:
             print("Loading model from ", self.args.load_model)
-            # self.model.load_state_dict(torch.load(self.args.load_model))
             self.model.load_state_dict(torch.load(self.args.load_model, map_location=lambda storage, loc: storage))
 
         max_len = max([len(f) for f in self.features_lst])
@@ -111,7 +108,7 @@ class BaseTrainer(object):
                                                      find_unused_parameters=True)
             else:
                 self.model.cuda()
-                # self.model = DataParallel(self.model, device_ids=self.args.devices)
+                self.model = DataParallel(self.model, device_ids=self.args.devices)
 
         cudnn.benchmark = True
 
@@ -206,13 +203,9 @@ class BaseTrainer(object):
             data_loader = DataLoader(train_data, num_workers=args.workers, pin_memory=True,
                                      sampler=train_sampler, batch_size=args.batch_size)
         else:
-            # train_sampler = RandomSampler(train_data)
-            # data_loader = DataLoader(train_data, sampler=train_sampler, batch_size=args.batch_size)
-
-            weights = make_weights_for_balanced_classes(all_labels.detach().cpu().numpy().tolist(), 6)
+            weights = make_weights_for_balanced_classes(all_labels.detach().cpu().numpy().tolist(), self.args.num_classes)
             weights = torch.DoubleTensor(weights)
             train_sampler = torch.utils.data.sampler.WeightedRandomSampler(weights, len(weights))
-
             data_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=None,
                                                       sampler=train_sampler, num_workers=args.workers,
                                                       worker_init_fn=self.set_random_seed(self.args.random_seed), pin_memory=True, drop_last=True)
@@ -221,11 +214,13 @@ class BaseTrainer(object):
 
     def save_model(self, epoch, loss):
         loss = round(loss, 3)
+        model_type = ("adv" if self.args.adv else "base")
 
-        save_file = os.path.join(self.args.save_dir, "base_model_{}_{:.3f}.pt".format(epoch, loss))
-        save_file_config = os.path.join(self.args.save_dir, "base_config_{}_{:.3f}.json".format(epoch, loss))
+        save_file = os.path.join(self.args.save_dir, "{}_{}_{:.3f}.pt".format(model_type, epoch, loss))
+        save_file_config = os.path.join(self.args.save_dir, "{}_config_{}_{:.3f}.json".format(model_type, epoch, loss))
 
         model_to_save = self.model.module if hasattr(self.model, 'module') else self.model  # Only save the model it-self
+
         torch.save(model_to_save.state_dict(), save_file)
         model_to_save.config.to_json_file(save_file_config)
 
@@ -249,11 +244,25 @@ class BaseTrainer(object):
                     # remove unnecessary pad token
                     seq_len = torch.sum(torch.sign(input_ids), 1)
                     max_len = torch.max(seq_len)
-                    input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
-                    end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
+                    
+                    #input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
+                    #end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
+
+                    input_ids = input_ids[:, :max_len].clone()
+                    input_mask = input_mask[:, :max_len].clone()
+                    seg_ids = seg_ids[:, :max_len].clone()
+                    start_positions = start_positions.clone()
+                    end_positions = end_positions.clone()
+
+                    if self.args.use_cuda :
+                        input_ids = input_ids.cuda(self.args.gpu, non_blocking=True)
+                        input_mask = input_mask.cuda(self.args.gpu, non_blocking=True)
+                        seg_ids = seg_ids.cuda(self.args.gpu, non_blocking=True)
+                        start_positions = start_positions.cuda(self.args.gpu, non_blocking=True)
+                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)   
 
                     loss = self.model(input_ids, seg_ids, input_mask, start_positions, end_positions)
                     loss = loss.mean()
@@ -268,7 +277,7 @@ class BaseTrainer(object):
                     if epoch != 0 and i % 2000 == 0:
                         result_dict = self.evaluate_model(i)
                         for dev_file, f1 in result_dict.items():
-                            print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
+                            print("GPU/CPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
                     global_step += 1
                     batch_step += 1
@@ -287,10 +296,9 @@ class BaseTrainer(object):
             if self.args.do_valid:
                 result_dict = self.evaluate_model(epoch)
                 for dev_file, f1 in result_dict.items():
-                    print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
+                    print("GPU/CPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
     def evaluate_model(self, epoch):
-        # model = self.model.module if hasattr(self.model, "module") else self.model
         # result directory
         result_file = os.path.join(self.args.result_dir, "dev_eval_{}.txt".format(epoch))
         fw = open(result_file, "a")
@@ -317,6 +325,7 @@ class BaseTrainer(object):
 
     def set_random_seed(self, random_seed):
         if random_seed is not None:
+            print("set random seed")
             os.environ['PYTHONHASHSEED'] = str(random_seed)
             random.seed(random_seed)
             np.random.seed(random_seed)
@@ -343,10 +352,9 @@ class AdvTrainer(BaseTrainer):
             self.args.gpu = 0
 
         if self.args.use_cuda and self.args.distributed:
-            if self.args.multiprocessing_distributed:
-                # For multiprocessing distributed training, rank needs to be the
-                # global rank among all the processes
-                self.args.rank = self.args.rank * ngpus_per_node + gpu
+            # For multiprocessing distributed training, rank needs to be the
+            # global rank among all the processes
+            self.args.rank = self.args.rank * ngpus_per_node + gpu
             dist.init_process_group(backend=self.args.dist_backend, init_method=self.args.dist_url,
                                     world_size=self.args.world_size, rank=self.args.rank)
 
@@ -358,7 +366,7 @@ class AdvTrainer(BaseTrainer):
 
         if self.args.load_model is not None:
             print("Loading model from ", self.args.load_model)
-            self.model.load_state_dict(torch.load(self.args.load_model, map_location="cpu"))
+            self.model.load_state_dict(torch.load(self.args.load_model, map_location=lambda storage, loc: storage))
 
         if self.args.freeze_bert:
             for param in self.model.bert.parameters():
@@ -382,7 +390,7 @@ class AdvTrainer(BaseTrainer):
                                                      find_unused_parameters=True)
             else:
                 self.model.cuda()
-                # self.model = DataParallel(self.model, device_ids=self.args.devices)
+                self.model = DataParallel(self.model, device_ids=self.args.devices)
 
         cudnn.benchmark = True
 
@@ -403,17 +411,28 @@ class AdvTrainer(BaseTrainer):
                 for i, batch in enumerate(data_loader, start=1):
                     input_ids, input_mask, seg_ids, start_positions, end_positions, labels = batch
 
-                    if input_ids.size(0) % 4 != 0:
-                        continue
-
                     # remove unnecessary pad token
                     seq_len = torch.sum(torch.sign(input_ids), 1)
                     max_len = torch.max(seq_len)
-                    input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
-                    end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
+
+                    #input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    #start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
+                    #end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
+
+                    input_ids = input_ids[:, :max_len].clone()
+                    input_mask = input_mask[:, :max_len].clone()
+                    seg_ids = seg_ids[:, :max_len].clone()
+                    start_positions = start_positions.clone()
+                    end_positions = end_positions.clone()
+
+                    if self.args.use_cuda :
+                        input_ids = input_ids.cuda(self.args.gpu, non_blocking=True)
+                        input_mask = input_mask.cuda(self.args.gpu, non_blocking=True)
+                        seg_ids = seg_ids.cuda(self.args.gpu, non_blocking=True)
+                        start_positions = start_positions.cuda(self.args.gpu, non_blocking=True)
+                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)        
 
                     qa_loss = self.model(input_ids, seg_ids, input_mask,
                                          start_positions, end_positions, labels,
@@ -440,7 +459,7 @@ class AdvTrainer(BaseTrainer):
                     if epoch != 0 and i % 2000 == 0:
                         result_dict = self.evaluate_model(i)
                         for dev_file, f1 in result_dict.items():
-                            print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
+                            print("GPU/CPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
 
                     batch_step += 1
                     msg = "{}/{} {} - ETA : {} - QA loss: {:.4f}, DIS loss: {:.4f}" \
@@ -459,131 +478,4 @@ class AdvTrainer(BaseTrainer):
             if self.args.do_valid:
                 result_dict = self.evaluate_model(epoch)
                 for dev_file, f1 in result_dict.items():
-                    print("GPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
-
-    def save_model(self, epoch, loss):
-        loss = round(loss, 3)
-        save_file = os.path.join(self.args.save_dir, "adv_{}_{:.3f}.pt".format(epoch, loss))
-        save_file_config = os.path.join(self.args.save_dir, "adv_config_{}_{:.3f}.json".format(epoch, loss))
-
-        if hasattr(self.model, "module"):
-            model_to_save = self.model.module
-        else:
-            # TODO: In BaseTrainer, it is self.model
-            model_to_save = self.model.feat_ext
-        torch.save(model_to_save.state_dict(), save_file)
-        model_to_save.config.to_json_file(save_file_config)
-
-
-class PreTrainer(BaseTrainer):
-    def __init__(self, args):
-        super(PreTrainer, self).__init__(args)
-
-    def make_model_env(self, gpu, ngpus_per_node):
-        if self.args.distributed:
-            self.args.gpu = self.args.devices[gpu]
-        else:
-            self.args.gpu = 0
-
-        if self.args.use_cuda and self.args.distributed:
-            if self.args.multiprocessing_distributed:
-                # For multiprocessing distributed training, rank needs to be the
-                # global rank among all the processes
-                self.args.rank = self.args.rank * ngpus_per_node + gpu
-            dist.init_process_group(backend=self.args.dist_backend, init_method=self.args.dist_url,
-                                    world_size=self.args.world_size, rank=self.args.rank)
-
-        self.model = DomainDiscriminator(self.args.num_classes,
-                                         self.args.hidden_size,
-                                         self.args.num_layers,
-                                         self.args.dropout)
-        self.qa_model = BertForQuestionAnswering.from_pretrained(self.args.bert_model)
-        state_dict = torch.load(self.args.qa_path, map_location="cpu")
-        self.qa_model.load_state_dict(state_dict)
-        self.qa_model.requires_grad = False
-
-        max_len = max([len(f) for f in self.features_lst])
-        num_train_optimization_steps = math.ceil(max_len / self.args.batch_size) * self.args.epochs * len(self.features_lst)
-
-        params = list(self.model.named_parameters())
-        self.optimizer = get_opt(params, num_train_optimization_steps, self.args)
-
-        if self.args.use_cuda:
-            if self.args.distributed:
-                torch.cuda.set_device(self.args.gpu)
-                self.model.cuda(self.args.gpu)
-                self.args.batch_size = int(self.args.batch_size / ngpus_per_node)
-                self.args.workers = int((self.args.workers + ngpus_per_node - 1) / ngpus_per_node)
-                self.model = DistributedDataParallel(self.model, device_ids=[self.args.gpu],
-                                                     find_unused_parameters=True)
-                self.qa_model = DistributedDataParallel(self.qa_model, device_ids=[self.args.gpu],
-                                                        find_unused_parameters=True)
-            else:
-                self.model.cuda()
-                self.qa_model.cuda()
-                # self.model = DataParallel(self.model, device_ids=self.args.devices)
-                # self.qa_model = DataParallel(self.qa_model, device_ids=self.args.devices)
-        cudnn.benchmark = True
-
-    def train(self):
-        step = 1
-        avg_dis_loss = 0
-        iter_lst = [self.get_iter(self.features_lst, self.args)]
-        num_batches = sum([len(iterator[0]) for iterator in iter_lst])
-        criterion = nn.NLLLoss()
-        for epoch in range(self.args.start_epoch, self.args.start_epoch + self.args.epochs):
-            start = time.time()
-            self.model.train()
-            batch_step = 1
-            for data_loader, sampler in iter_lst:
-                if self.args.distributed:
-                    sampler.set_epoch(epoch)
-
-                for i, batch in enumerate(data_loader, start=1):
-                    input_ids, input_mask, seg_ids, start_positions, end_positions, labels = batch
-
-                    if input_ids.size(0) % 4 != 0:
-                        continue
-
-                    # remove unnecessary pad token
-                    seq_len = torch.sum(torch.sign(input_ids), 1)
-                    max_len = torch.max(seq_len)
-                    input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    labels = labels.cuda()
-                    with torch.no_grad():
-                        sequence_output, _ = self.qa_model.module.bert(input_ids, seg_ids, input_mask,
-                                                                       output_all_encoded_layers=False)
-
-                        hidden = sequence_output[:, 0]
-                    log_prob = self.model(hidden.detach())
-                    loss = criterion(log_prob, labels)
-                    loss = loss.mean()
-                    loss.backward()
-
-                    avg_dis_loss = self.cal_running_avg_loss(loss.item(), avg_dis_loss)
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
-                    step += 1
-
-                    if step % 5000 == 0:
-                        if not self.args.distributed or self.args.rank == 0:
-                            self.save_model(i, avg_dis_loss)
-                    msg = "{}/{} {} - ETA : {} -  DIS loss: {:.4f}" \
-                        .format(batch_step, num_batches, progress_bar(batch_step, num_batches),
-                                eta(start, batch_step, num_batches), avg_dis_loss)
-                    batch_step += 1
-                    print(msg, end="\r")
-
-            print("{} epoch: {}, final dis loss: {:.4f}".format(self.args.gpu, epoch, avg_dis_loss))
-
-    def save_model(self, epoch, loss):
-        loss = round(loss, 3)
-        save_file = os.path.join(self.args.save_dir, "dis_{}_{}".format(epoch, loss))
-        if hasattr(self.model, "module"):
-            model_to_save = self.model.module
-        else:
-            model_to_save = self.model.feat_ext
-        state_dict = model_to_save.state_dict()
-        torch.save(state_dict, save_file)
+                    print("GPU/CPU {} evaluated {}: {:.2f}".format(self.args.gpu, dev_file, f1), end="\n")
