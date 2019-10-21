@@ -9,7 +9,6 @@ import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
-import torch.nn as nn
 from torch.nn import DataParallel
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, TensorDataset
@@ -21,7 +20,7 @@ from pytorch_pretrained_bert.optimization import BertAdam
 
 from eval import eval_qa
 from iterator import read_squad_examples, convert_examples_to_features
-from model import DomainQA, DomainDiscriminator
+from model import DomainQA
 from utils import eta, progress_bar
 
 
@@ -244,12 +243,12 @@ class BaseTrainer(object):
                     # remove unnecessary pad token
                     seq_len = torch.sum(torch.sign(input_ids), 1)
                     max_len = torch.max(seq_len)
-                    
-                    #input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
-                    #end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
+
+                    # input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    # input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    # seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
+                    # start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
+                    # end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
 
                     input_ids = input_ids[:, :max_len].clone()
                     input_mask = input_mask[:, :max_len].clone()
@@ -257,12 +256,12 @@ class BaseTrainer(object):
                     start_positions = start_positions.clone()
                     end_positions = end_positions.clone()
 
-                    if self.args.use_cuda :
+                    if self.args.use_cuda:
                         input_ids = input_ids.cuda(self.args.gpu, non_blocking=True)
                         input_mask = input_mask.cuda(self.args.gpu, non_blocking=True)
                         seg_ids = seg_ids.cuda(self.args.gpu, non_blocking=True)
                         start_positions = start_positions.cuda(self.args.gpu, non_blocking=True)
-                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)   
+                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)
 
                     loss = self.model(input_ids, seg_ids, input_mask, start_positions, end_positions)
                     loss = loss.mean()
@@ -287,7 +286,7 @@ class BaseTrainer(object):
                                 avg_loss)
                     print(msg, end="\r")
 
-            print("{} epoch: {}, final loss: {:.4f}".format(self.args.gpu, epoch, avg_loss))
+            print("[GPU Num: {}, epoch: {}, Final loss: {:.4f}]".format(self.args.gpu, epoch, avg_loss))
 
             # save model
             if self.args.rank == 0:
@@ -323,9 +322,10 @@ class BaseTrainer(object):
             running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
             return running_avg_loss
 
-    def set_random_seed(self, random_seed):
+    @staticmethod
+    def set_random_seed(random_seed):
         if random_seed is not None:
-            print("set random seed")
+            print("Set random seed as {}".format(random_seed))
             os.environ['PYTHONHASHSEED'] = str(random_seed)
             random.seed(random_seed)
             np.random.seed(random_seed)
@@ -361,8 +361,7 @@ class AdvTrainer(BaseTrainer):
         self.model = DomainQA(self.args.bert_model, self.args.num_classes,
                               self.args.hidden_size, self.args.num_layers,
                               self.args.dropout, self.args.dis_lambda,
-                              self.args.concat, self.args.anneal,
-                              self.args.qa_path, self.args.dis_path)
+                              self.args.concat, self.args.anneal)
 
         if self.args.load_model is not None:
             print("Loading model from ", self.args.load_model)
@@ -415,24 +414,18 @@ class AdvTrainer(BaseTrainer):
                     seq_len = torch.sum(torch.sign(input_ids), 1)
                     max_len = torch.max(seq_len)
 
-                    #input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    #start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
-                    #end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
-
                     input_ids = input_ids[:, :max_len].clone()
                     input_mask = input_mask[:, :max_len].clone()
                     seg_ids = seg_ids[:, :max_len].clone()
                     start_positions = start_positions.clone()
                     end_positions = end_positions.clone()
 
-                    if self.args.use_cuda :
+                    if self.args.use_cuda:
                         input_ids = input_ids.cuda(self.args.gpu, non_blocking=True)
                         input_mask = input_mask.cuda(self.args.gpu, non_blocking=True)
                         seg_ids = seg_ids.cuda(self.args.gpu, non_blocking=True)
                         start_positions = start_positions.cuda(self.args.gpu, non_blocking=True)
-                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)        
+                        end_positions = end_positions.cuda(self.args.gpu, non_blocking=True)
 
                     qa_loss = self.model(input_ids, seg_ids, input_mask,
                                          start_positions, end_positions, labels,
@@ -468,7 +461,7 @@ class AdvTrainer(BaseTrainer):
                                 avg_qa_loss, avg_dis_loss)
                     print(msg, end="\r")
 
-            print("{} epoch: {}, final loss: {:.4f}, final dis loss: {:.4f}"
+            print("[GPU Num: {}, Epoch: {}, Final QA loss: {:.4f}, Final DIS loss: {:.4f}]"
                   .format(self.args.gpu, epoch, avg_qa_loss, avg_dis_loss))
 
             # save model

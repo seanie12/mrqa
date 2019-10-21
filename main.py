@@ -8,6 +8,7 @@ import torch.multiprocessing as mp
 from trainer import BaseTrainer, AdvTrainer
 from iterator import iter_main
 
+
 # should be located outside of main function!
 def worker(gpu, ngpus_per_node, args):
     if args.adv:
@@ -44,7 +45,7 @@ def main(args):
     args.distributed = (args.use_cuda and args.distributed)
 
     ngpus_per_node = 0
-    if args.use_cuda :
+    if args.use_cuda:
         ngpus_per_node = len(args.devices)
         assert ngpus_per_node <= torch.cuda.device_count(), "GPU device number exceeds max capacity. select device ids correctly."
 
@@ -73,10 +74,8 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_proportion", default=0.1, type=float)
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int, help="gradient_accumulation_steps")
 
-    #parser.add_argument("--do_lower_case", default=True, help="do lower case on text")
-    parser.add_argument("--do_lower_case", action="store_true", help="do lower case on text")
-    #parser.add_argument("--use_cuda", default=False, help="use cuda or not")
-    parser.add_argument("--use_cuda", action="store_true", help="use cuda or not")
+    parser.add_argument("--do_lower_case", type=bool, default=True, help="do lower case on text")
+    parser.add_argument("--use_cuda", type=bool, default=True, help="use cuda or not")
 
     parser.add_argument("--do_valid", default=True, help="do validation or not")
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
@@ -97,24 +96,18 @@ if __name__ == "__main__":
     parser.add_argument("--dist_backend", default="nccl",
                         help="Backend communication method. NCCL is used for DistributedDataParallel")
     parser.add_argument("--dist_url", default="tcp://127.0.0.1:9999", help="DistributedDataParallel server")
-    parser.add_argument("--gpu", default=None,
-                        help="Manual setting of gpu device. If it is not None, all parallel processes are disabled")
+    parser.add_argument("--gpu", default=None, help="Manual setting of gpu device. If it is not None, all parallel processes are disabled")
     parser.add_argument("--distributed", action="store_true", help="Use multiprocess distribution or not")
-    #parser.add_argument("--distributed", default=False, help="Use multiprocess distribution or not")
-    parser.add_argument("--random_seed", default=2019, help="random state (seed)")
+    parser.add_argument("--random_seed", default=2019, help="Random state(seed)")
 
     # For adversarial learning
-    parser.add_argument("--adv", action="store_true", help="adversarial training")
-    parser.add_argument("--pretraining", action="store_true", help="pretraining discriminator")
-    parser.add_argument("--dis_lambda", type=float, default=0.01, help="importance of adversarial loss")
-    #parser.add_argument("--num_classes", type=int, default=2, help="num_classes for discriminator")
-    parser.add_argument("--hidden_size", type=int, default=768, help="hidden size for discriminator")
-    parser.add_argument("--num_layers", type=int, default=3, help="number of layers for discriminator")
-    parser.add_argument("--dropout", type=float, default=0.1, help="dropout for discriminator")
+    parser.add_argument("--adv", action="store_true", help="Use adversarial training")
+    parser.add_argument("--dis_lambda", type=float, default=0.01, help="Importance of adversarial loss")
+    parser.add_argument("--hidden_size", type=int, default=768, help="Hidden size for discriminator")
+    parser.add_argument("--num_layers", type=int, default=3, help="Number of layers for discriminator")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout for discriminator")
     parser.add_argument("--anneal", action="store_true")
-    parser.add_argument("--qa_path", type=str, default=".", help="pre-trained model path")
-    parser.add_argument("--dis_path", type=str, default=".")
-    parser.add_argument("--concat", action="store_true", help="whether to use both cls and sep embedding")
+    parser.add_argument("--concat", action="store_true", help="Whether to use both cls and sep embedding")
     args = parser.parse_args()
 
     main(args)

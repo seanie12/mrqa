@@ -34,8 +34,7 @@ class DomainDiscriminator(nn.Module):
 
 class DomainQA(nn.Module):
     def __init__(self, bert_name_or_config, num_classes=6, hidden_size=768,
-                 num_layers=3, dropout=0.1, dis_lambda=0.5, concat=False, anneal=False,
-                 qa_path=None, dis_path=None):
+                 num_layers=3, dropout=0.1, dis_lambda=0.5, concat=False, anneal=False):
         super(DomainQA, self).__init__()
         if isinstance(bert_name_or_config, BertConfig):
             self.bert = BertModel(bert_name_or_config)
@@ -54,25 +53,6 @@ class DomainQA(nn.Module):
             input_size = hidden_size
         self.discriminator = DomainDiscriminator(num_classes, input_size, hidden_size, num_layers, dropout)
 
-        if len(qa_path) != 1:
-            print("load qa model")
-            state_dict = torch.load(qa_path, map_location="cpu")
-            new_dict = dict()
-            linear_dict = dict()
-            for k, v in state_dict.items():
-                if "bert" in k:
-                    new_k = ".".join(k.split(".")[1:])
-                    new_dict[new_k] = v
-                if "qa_outputs" in k:
-                    new_k = ".".join(k.split(".")[1:])
-                    linear_dict[new_k] = v
-            self.bert.load_state_dict(new_dict)
-            self.qa_outputs.load_state_dict(linear_dict)
-
-        if len(dis_path) != 1:
-            print("load discriminator")
-            state_dict = torch.load(dis_path, map_location="cpu")
-            self.discriminator.load_state_dict(state_dict)
         self.num_classes = num_classes
         self.dis_lambda = dis_lambda
         self.anneal = anneal
