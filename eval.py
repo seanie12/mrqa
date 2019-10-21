@@ -1,10 +1,8 @@
 import collections
 import json
-import argparse
 
 import torch
 from torch.utils.data import TensorDataset, SequentialSampler, DataLoader
-from pytorch_pretrained_bert import BertForQuestionAnswering, BertTokenizer
 
 from iterator import read_squad_examples, convert_examples_to_features, write_predictions
 from mrqa_official_eval import evaluate, read_answers
@@ -39,13 +37,15 @@ def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
         input_ids, input_mask, seg_ids = batch
         seq_len = torch.sum(torch.sign(input_ids), 1)
         max_len = torch.max(seq_len)
-        # input_ids = input_ids[:, :max_len].to(device)
-        # input_mask = input_mask[:, :max_len].to(device)
-        # seg_ids = seg_ids[:, :max_len].to(device)
 
-        input_ids = input_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
-        input_mask = input_mask[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
-        seg_ids = seg_ids[:, :max_len].clone().cuda(args.gpu, non_blocking=True)
+        input_ids = input_ids[:, :max_len].clone()
+        input_mask = input_mask[:, :max_len].clone()
+        seg_ids = seg_ids[:, :max_len].clone()
+
+        if args.use_cuda:
+            input_ids = input_ids.cuda(args.gpu, non_blocking=True)
+            input_mask = input_mask.cuda(args.gpu, non_blocking=True)
+            seg_ids = seg_ids.cuda(args.gpu, non_blocking=True)
 
         with torch.no_grad():
             batch_start_logits, batch_end_logits = model(input_ids, seg_ids, input_mask)
@@ -66,30 +66,6 @@ def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
 
     answers = read_answers(file_path)
     preds_dict = json.loads(preds)
-    metrics = evaluate(answers, preds_dict, skip_no_answer=False)
+    metrics = evaluate(answers, preds_dict, skip_no_answer=args.skip_no_ans)
 
     return metrics
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, required=True, help="model path")
-    parser.add_argument("--file_path", type=str, required=True, help="data file to evaluate")
-    parser.add_argument("--prediction_file", type=str, required=True, help="prediction file")
-    parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
-    parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
-    parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
-    parser.add_argument("--batch_size", default=16, type=int, help="batch size for inference")
-    parser.add_argument("--doc_stride", default=128, type=int, help="document stride")
-    parser.add_argument("--device", default="cuda:0", type=str, help="device ")
-    args = parser.parse_args()
-
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model)
-    model = BertForQuestionAnswering.from_pretrained(args.bert_model)
-    state_dict = torch.load(args.model_path)
-    model.load_state_dict(state_dict)
-    model = model.to(args.device)
-    metrics_dict = eval_qa(model, args.file_path,
-                           args.prediction_file,
-                           args,
-                           tokenizer)

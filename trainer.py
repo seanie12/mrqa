@@ -244,12 +244,6 @@ class BaseTrainer(object):
                     seq_len = torch.sum(torch.sign(input_ids), 1)
                     max_len = torch.max(seq_len)
 
-                    # input_ids = input_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    # input_mask = input_mask[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    # seg_ids = seg_ids[:, :max_len].clone().cuda(self.args.gpu, non_blocking=True)
-                    # start_positions = start_positions.clone().cuda(self.args.gpu, non_blocking=True)
-                    # end_positions = end_positions.clone().cuda(self.args.gpu, non_blocking=True)
-
                     input_ids = input_ids[:, :max_len].clone()
                     input_mask = input_mask[:, :max_len].clone()
                     seg_ids = seg_ids[:, :max_len].clone()
