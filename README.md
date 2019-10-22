@@ -24,7 +24,7 @@ Implementation of our paper ["Domain-agnostic Question-Answering with Adversaria
 
 ```
 
-- Arguments should be as below if you use pickled data. If you want to change one of these two arguments,
+- **Arguments should be same as below if you use pickled data. If you want to change one of these two arguments.**
 
 ```bash
 parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="Bert model")
@@ -33,8 +33,8 @@ parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to 
 
 ### Option 2: Download the original data
 
-- Download the data by running shell file. Then run the code.
-- The preprocessed train data will be created before training. It will takes a lot of time.
+- Download the data by `running shell file`. 
+- Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
 
 ```bash
 $ cd data
@@ -51,7 +51,7 @@ pytorch-pretrained-bert>=0.6.2
 json-lines>=0.5.0
 ```
 
-## Run
+## Model Training & Validation
 
 ```bash
 $ python3 main.py \
@@ -76,9 +76,3 @@ $ python3 main.py \
     primaryClass={cs.CL}
 }
 ```
-
-### TODO
-
-- [ ] Write the option on Run
-- [ ] `How to run` title name change
-- [ ] See other github repo
