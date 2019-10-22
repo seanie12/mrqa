@@ -63,7 +63,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", help="debugging mode")
-    parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="bert model")
+    parser.add_argument("--bert_model", type=str, default="bert-base-uncased",  help="bert model")
     parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
     parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
     parser.add_argument("--doc_stride", default=128, type=int)
