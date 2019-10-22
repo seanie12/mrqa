@@ -27,8 +27,8 @@ Implementation of our paper ["Domain-agnostic Question-Answering with Adversaria
 - Arguments should be as below if you use pickled data. If you want to change one of these two arguments,
 
 ```bash
-parser.add_argument("--bert_model", type=str, default="bert-base-uncased", help="bert model")
-parser.add_argument("--skip_no_ans", type=bool, default=False, help="whether to exclude no answer example")
+parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="Bert model")
+parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to exclude no answer example")
 ```
 
 ### Option 2: Download the original data

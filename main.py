@@ -62,20 +62,20 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action="store_true", help="debugging mode")
-    parser.add_argument("--bert_model", type=str, default="bert-base-uncased",  help="bert model")
-    parser.add_argument("--max_seq_length", default=384, type=int, help="max sequence length")
-    parser.add_argument("--max_query_length", default=64, type=int, help="max query length")
-    parser.add_argument("--doc_stride", default=128, type=int)
+    parser.add_argument("--debug", action="store_true", help="Debugging mode, taking only first 100 data")
+    parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="Bert model")
+    parser.add_argument("--max_seq_length", default=384, type=int, help="Max sequence length")
+    parser.add_argument("--max_query_length", default=64, type=int, help="Max query length")
+    parser.add_argument("--doc_stride", default=128, type=int, help="doc stride")
     parser.add_argument("--batch_size", default=32, type=int, help="batch size")
-    parser.add_argument("--epochs", default=2, type=int, help="number of epochs")
+    parser.add_argument("--epochs", default=2, type=int, help="Number of epochs")
     parser.add_argument("--start_epoch", default=0, type=int, help="starting epoch point")
-    parser.add_argument("--lr", default=3e-5, type=float)
-    parser.add_argument("--warmup_proportion", default=0.1, type=float)
+    parser.add_argument("--lr", default=3e-5, type=float, help="Learning rate")
+    parser.add_argument("--warmup_proportion", default=0.1, type=float, help="Warmup proportion")
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int, help="gradient_accumulation_steps")
 
-    parser.add_argument("--do_lower_case", type=bool, default=True, help="do lower case on text")
-    parser.add_argument("--use_cuda", type=bool, default=True, help="use cuda or not")
+    parser.add_argument("--do_lower_case", default=True, type=bool, help="do lower case on text")
+    parser.add_argument("--use_cuda", default=True, type=bool, help="use cuda or not")
 
     parser.add_argument("--do_valid", default=True, help="do validation or not")
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
@@ -84,8 +84,8 @@ if __name__ == "__main__":
     parser.add_argument("--dev_folder", default="./data/dev", type=str, help="path of training data file")
     parser.add_argument("--pickled_folder", default="./pickled_data", type=str, help="path of saved pickle file")
     parser.add_argument("--load_model", default=None, type=str, help="load model")
-    parser.add_argument("--skip_no_ans", type=bool, default=False, help="whether to exclude no answer example")
-    parser.add_argument("--devices", type=str, default='0', help="gpu device ids to use, concat with '_', ex) '0_1_2_3'")
+    parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to exclude no answer example")
+    parser.add_argument("--devices", default='0', type=str, help="gpu device ids to use, concat with '_', ex) '0_1_2_3'")
 
     parser.add_argument("--workers", default=4, help="Number of processes(workers) per node."
                                                      "It should be equal to the number of gpu devices to use in one node")
@@ -102,10 +102,10 @@ if __name__ == "__main__":
 
     # For adversarial learning
     parser.add_argument("--adv", action="store_true", help="Use adversarial training")
-    parser.add_argument("--dis_lambda", type=float, default=0.01, help="Importance of adversarial loss")
-    parser.add_argument("--hidden_size", type=int, default=768, help="Hidden size for discriminator")
-    parser.add_argument("--num_layers", type=int, default=3, help="Number of layers for discriminator")
-    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout for discriminator")
+    parser.add_argument("--dis_lambda", default=0.01, type=float, help="Importance of adversarial loss")
+    parser.add_argument("--hidden_size", default=768, type=int, help="Hidden size for discriminator")
+    parser.add_argument("--num_layers", default=3, type=int, help="Number of layers for discriminator")
+    parser.add_argument("--dropout", default=0.1, type=float, help="Dropout for discriminator")
     parser.add_argument("--anneal", action="store_true")
     parser.add_argument("--concat", action="store_true", help="Whether to use both cls and sep embedding")
     args = parser.parse_args()
