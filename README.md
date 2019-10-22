@@ -1,6 +1,6 @@
 # Domain-agnostic Question-Answering with Adversarial Training
 
-Implementation of our paper ["Domain-agnostic Question-Answering with Adversarial Training"](https://arxiv.org/abs/1910.09342) which is accepted by EMNLP-IJCNLP 2019 MRQA Workshop.
+Code for our paper ["Domain-agnostic Question-Answering with Adversarial Training"](https://arxiv.org/abs/1910.09342) which is accepted by EMNLP-IJCNLP 2019 MRQA Workshop.
 
 ## Data Preparation
 
@@ -33,7 +33,7 @@ parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to 
 
 ### Option 2: Download the original data
 
-- Download the data by `running shell file`. 
+- Download the data by running shell file. 
 - Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
 
 ```bash
