@@ -4,9 +4,19 @@ Code for our paper ["Domain-agnostic Question-Answering with Adversarial Trainin
 
 ## Data Preparation
 
-### Option 1: Download pickled data (Much faster)
+### Option 1: Download the original data
 
-- Download the pickled data from this [link](https://drive.google.com/open?id=150ZzHpjo_ddeCICIOwXso6VRk2FoZ383).
+- Download the data by running shell file.
+- Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
+
+```bash
+$ cd data
+$ ./download_data.sh
+```
+
+### Option 2: Download pickled data (Much faster)
+
+- Download the pickled data from this [link](https://drive.google.com/open?id=1-IHdLL4oLOI_Ur8ej-KUZ4kVGGuSKcJ2).
 
 - Unzip the zipfile on the root directory.
 
@@ -28,17 +38,7 @@ Code for our paper ["Domain-agnostic Question-Answering with Adversarial Trainin
 
 ```bash
 parser.add_argument("--bert_model", default="bert-base-uncased", type=str, help="Bert model")
-parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to exclude no answer example")
-```
-
-### Option 2: Download the original data
-
-- Download the data by running shell file.
-- Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
-
-```bash
-$ cd data
-$ ./download_data.sh
+parser.add_argument("--skip_no_ans", action='store_true', default=False, help="whether to exclude no answer example")
 ```
 
 ## Requirements
@@ -55,15 +55,18 @@ json-lines>=0.5.0
 
 ```bash
 $ python3 main.py \
-         --epochs=2 \
-         --batch_size=64 \
-         --lr=3e-5 \
-         --use_cuda=True \
-         --do_valid=True \
-         --skip_no_ans=False \
+         --epochs 2 \
+         --batch_size 64 \
+         --lr 3e-5 \
+         --do_lower_case \
+         --use_cuda \
+         --do_valid \
          --adv \
-         --dis_lambda=0.01
+         --dis_lambda 0.01
 ```
+
+- If you are using uncased bert model, give the option `--do_lower_case`.
+- If you want to do validation, give the option `--do_valid`.
 
 ## Reference
 

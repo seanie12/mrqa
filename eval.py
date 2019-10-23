@@ -61,7 +61,7 @@ def eval_qa(model, file_path, prediction_file, args, tokenizer, batch_size=50):
                                          end_logits=end_logits))
 
     preds = write_predictions(eval_examples, eval_features, all_results,
-                              n_best_size=20, max_answer_length=30, do_lower_case=True,
+                              n_best_size=20, max_answer_length=30, do_lower_case=args.do_lower_case,
                               output_prediction_file=prediction_file)
 
     answers = read_answers(file_path)

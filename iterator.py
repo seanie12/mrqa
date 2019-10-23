@@ -779,7 +779,7 @@ def save_features(args):
 
         # Save feature lst as pickle (For reuse & fast loading)
         with open(pickle_file_path, 'wb') as pkl_f:
-            print("Saving {} file as pkl...".format(data_name))
+            print("Saving {} file from pkl file...".format(data_name))
             pickle.dump(train_features, pkl_f)
 
         print("[{} saving done]".format(filename))
@@ -793,7 +793,7 @@ def iter_main(args):
     files = [(f, args) for f in files if f.endswith(".gz")]
     print("Number of data set: {}".format(len(files)))
 
-    pool = multiprocessing.Pool(processes=len(files))
+    pool = multiprocessing.Pool(processes=3)
     pool.map(save_features, files)
     pool.close()
     pool.join()

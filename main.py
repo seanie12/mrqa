@@ -74,17 +74,17 @@ if __name__ == "__main__":
     parser.add_argument("--warmup_proportion", default=0.1, type=float, help="Warmup proportion")
     parser.add_argument("--gradient_accumulation_steps", default=1, type=int, help="gradient_accumulation_steps")
 
-    parser.add_argument("--do_lower_case", default=True, type=bool, help="do lower case on text")
-    parser.add_argument("--use_cuda", default=True, type=bool, help="use cuda or not")
+    parser.add_argument("--do_lower_case", action='store_true', default=True, help="Set this flag if you are using an uncased model.")
+    parser.add_argument("--use_cuda", action='store_true', help="use cuda or not")
 
-    parser.add_argument("--do_valid", default=True, help="do validation or not")
+    parser.add_argument("--do_valid", action='store_true', help="do validation or not")
     parser.add_argument("--freeze_bert", action="store_true", help="freeze bert parameters or not")
 
     parser.add_argument("--train_folder", default="./data/train", type=str, help="path of training data file")
     parser.add_argument("--dev_folder", default="./data/dev", type=str, help="path of training data file")
     parser.add_argument("--pickled_folder", default="./pickled_data", type=str, help="path of saved pickle file")
     parser.add_argument("--load_model", default=None, type=str, help="load model")
-    parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to exclude no answer example")
+    parser.add_argument("--skip_no_ans", action="store_true", help="whether to exclude no answer example")
     parser.add_argument("--devices", default='0', type=str, help="gpu device ids to use, concat with '_', ex) '0_1_2_3'")
 
     parser.add_argument("--workers", default=4, help="Number of processes(workers) per node."

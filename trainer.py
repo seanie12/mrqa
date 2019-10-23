@@ -163,7 +163,7 @@ class BaseTrainer(object):
                 # Save feature lst as pickle (For reuse & fast loading)
                 if not debug and self.args.rank == 0:
                     with open(pickle_file_path, 'wb') as pkl_f:
-                        print("Saving {} file as pkl...".format(data_name))
+                        print("Saving {} file from pkl file...".format(data_name))
                         pickle.dump(train_features, pkl_f)
 
         return features_lst
