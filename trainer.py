@@ -133,8 +133,8 @@ class BaseTrainer(object):
 
         files = [f for f in os.listdir(train_folder) if f.endswith(".gz")]
         print("Number of data set:{}".format(len(files)))
-        for file in files:
-            data_name = file.split(".")[0]
+        for filename in files:
+            data_name = filename.split(".")[0]
             # Check whether pkl file already exists
             pickle_file_name = '{}.pkl'.format(data_name)
             pickle_file_path = os.path.join(pickled_folder, pickle_file_name)
@@ -144,7 +144,7 @@ class BaseTrainer(object):
                     features_lst.append(pickle.load(pkl_f))
             else:
                 print("processing {} file".format(data_name))
-                file_path = os.path.join(train_folder, file)
+                file_path = os.path.join(train_folder, filename)
 
                 train_examples = read_squad_examples(file_path, debug=debug)
 

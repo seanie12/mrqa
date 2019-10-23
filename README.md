@@ -4,7 +4,7 @@ Code for our paper ["Domain-agnostic Question-Answering with Adversarial Trainin
 
 ## Data Preparation
 
-### Option 1: Download the original data
+### Download the original data
 
 - Download the data by running shell file.
 - Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
@@ -14,7 +14,7 @@ $ cd data
 $ ./download_data.sh
 ```
 
-### Option 2: Download pickled data (Much faster)
+### (Optional) Download the pickled data (for fast data loading)
 
 - Download the pickled data from this [link](https://drive.google.com/open?id=1-IHdLL4oLOI_Ur8ej-KUZ4kVGGuSKcJ2).
 
