@@ -33,7 +33,7 @@ parser.add_argument("--skip_no_ans", default=False, type=bool, help="whether to 
 
 ### Option 2: Download the original data
 
-- Download the data by running shell file. 
+- Download the data by running shell file.
 - Then run the code. Preprocessed train data will be created before training (It will takes quite a long time)
 
 ```bash
@@ -77,3 +77,9 @@ $ python3 main.py \
     primaryClass={cs.CL}
 }
 ```
+
+## Contributors
+
+- Lee, Seanie (https://github.com/seanie12)
+- Kim, Donggyu (https://github.com/donggyukimc)
+- Park, Jangwon (https://github.com/monologg)
