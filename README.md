@@ -56,12 +56,13 @@ json-lines>=0.5.0
 ```bash
 $ python3 main.py \
          --epochs=2 \
-         --batch_size=32 \
+         --batch_size=64 \
          --lr=3e-5 \
          --use_cuda=True \
          --do_valid=True \
          --skip_no_ans=False \
-         --adv
+         --adv \
+         --dis_lambda=0.01
 ```
 
 ## Reference
