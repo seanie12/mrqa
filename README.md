@@ -71,13 +71,13 @@ $ python3 main.py \
 ## Reference
 
 ```
-@misc{lee2019domainagnostic,
+@inproceedings{lee-etal-2019-domain,
     title={Domain-agnostic Question-Answering with Adversarial Training},
     author={Seanie Lee and Donggyu Kim and Jangwon Park},
+    booktitle={Proceedings of the 2nd Workshop on Machine Reading for Question Answering},
+    publisher={Association for Computational Linguistics},
     year={2019},
-    eprint={1910.09342},
-    archivePrefix={arXiv},
-    primaryClass={cs.CL}
+    url={https://www.aclweb.org/anthology/D19-5826},
 }
 ```
 
