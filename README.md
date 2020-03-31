@@ -5,7 +5,7 @@ Code for our paper ["Domain-agnostic Question-Answering with Adversarial Trainin
 ## Model Architecture
 
 <p float="left" align="center">
-    <img width="600" src="https://user-images.githubusercontent.com/28896432/77992903-0076db00-7362-11ea-98eb-799983177efc.png" />  
+    <img width="600" src="https://user-images.githubusercontent.com/28896432/77993568-58faa800-7363-11ea-8900-f01ec9b4980d.png" />  
 </p>
 
 ## Data Preparation
