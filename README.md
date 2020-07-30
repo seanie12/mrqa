@@ -89,6 +89,6 @@ $ python3 main.py \
 
 ## Contributors
 
-- Lee, Seanie (https://github.com/seanie12)
+- Lee, Seanie (https://seanie12.github.io/)
 - Kim, Donggyu (https://github.com/donggyukimc)
 - Park, Jangwon (https://github.com/monologg)
